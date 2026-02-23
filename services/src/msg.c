@@ -1,3 +1,4 @@
+#define _AE_BIMODAL 1
 #define _XOPEN_SOURCE
 #define _ISOC99_SOURCE
 #define _POSIX_SOURCE
