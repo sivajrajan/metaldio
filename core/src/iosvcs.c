@@ -68,7 +68,7 @@ int ddfree(struct s99_common_text_unit* dd)
     /* Pass NULL, not stderr: s99_prt_msg() expects a DBG_Opts*, not a FILE*.
      * Passing stderr causes info()/errmsg() to dereference the FILE struct
      * as a DBG_Opts, hitting opts->info_buffer (a non-NULL garbage value from
-     * the FILE struct bytes) and attempting to write into it → S0C4.         */
+     * the FILE struct bytes) and attempting to write into it -> S0C4.        */
     s99_prt_msg(NULL, parms, rc);
     return rc;
   }
