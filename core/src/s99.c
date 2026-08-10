@@ -178,14 +178,15 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 
 	rc = S99MSG(msgparms);
 	if (rc) {
-		errmsg(opts, "SVC99MSG rc:0x%x\n", rc);
-		errmsg(opts, "IEFDB476 failed with rc:0x%x\n", rc);
-		/* BUG FIX: s99_em_fmt_dmp expects DBG_Opts*, not FILE*.
-		 * Passing stderr dereferences it as a DBG_Opts struct —
-		 * opts->info_buffer / opts->error_buffer land on FILE
-		 * internals (non-NULL garbage) → S0C4 in errmsg/info.
-		 * Pass opts (which may be NULL) — errmsg() guards NULL. */
-		s99_em_fmt_dmp(opts, msgparms);
+		/* Only emit the raw diagnostic dump when the caller has
+		 * requested debug output; suppress it on normal runs so
+		 * that commands like "decho -a" do not spill internal SVC99
+		 * internals to stderr.                                        */
+		if (opts && opts->debug) {
+			errmsg(opts, "SVC99MSG rc:0x%x\n", rc);
+			errmsg(opts, "IEFDB476 failed with rc:0x%x\n", rc);
+			s99_em_fmt_dmp(opts, msgparms);
+		}
 	} else {
 		info(opts, "%.*s\n", msgparms->embuf.embufl1, &msgparms->embuf.embuft1[msgparms->embuf.embufo1]);
 		info(opts, "%.*s\n", msgparms->embuf.embufl2, &msgparms->embuf.embuft2[msgparms->embuf.embufo2]);

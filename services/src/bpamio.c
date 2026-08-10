@@ -947,7 +947,12 @@ struct desp* PTR32 find_desp(FM_BPAMHandle* bh, const char* memname, const DBG_O
   /* call DESERV and get extended attributes */
   int rc = DESERV(desp);
   if (rc) {
-    errmsg(opts, "Unable to PERFORM DESERV. rc:0x%x\n", rc);
+    /* DESERV returning non-zero for a non-existent member is expected
+     * (e.g. new member on first write).  Only log under debug to avoid
+     * spurious stderr output on normal decho runs.                     */
+    if (opts && opts->debug) {
+      errmsg(opts, "Unable to PERFORM DESERV. rc:0x%x\n", rc);
+    }
     return NULL;
   }
 
