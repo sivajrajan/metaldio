@@ -11,7 +11,7 @@ csource := $(shell find $(SRCDIR) -type f -name *.c)
 cobjs   := $(patsubst $(SRCDIR)/%,$(BLDDIR)/%,$(csource:.c=.o))
 objects := $(cobjs)
 cdeps   := $(patsubst $(SRCDIR)/%,$(DEPDIR)/%,$(csource:.c=.d))
-pgms    := $(BINDIR)/basiccreate $(BINDIR)/basicread $(BINDIR)/basicrddir $(BINDIR)/basicalloc $(BINDIR)/basicenq $(BINDIR)/basicmem
+pgms    := $(BINDIR)/basiccreate $(BINDIR)/basicread $(BINDIR)/basicrddir $(BINDIR)/basicalloc $(BINDIR)/basicenq $(BINDIR)/basicmem $(BINDIR)/basicddfreetest
 all: $(pgms)
 
 clean:
@@ -47,6 +47,10 @@ $(BINDIR)/basicmem: $(BLDDIR)/basicmem.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarch
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
 $(BINDIR)/basicalloc: $(BLDDIR)/basicalloc.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
+	mkdir -p $(BINDIR) ;
+	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
+
+$(BINDIR)/basicddfreetest: $(BLDDIR)/basicddfreetest.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
 	mkdir -p $(BINDIR) ;
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
