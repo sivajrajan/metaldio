@@ -66,22 +66,22 @@ int main(int argc, char* argv[]) {
   rc = uppercase(argv[1]);
   rc = uppercase(argv[2]);
 
-  rc = init_dsnam_text_unit(argv[1], &dsn);
+  rc = init_dsnam_text_unit(argv[1], &dsn, NULL);
   if (rc) {
     return rc;
   }
-  rc = dsdd_alloc(&dsn, &dd, &stats);
+  rc = dsdd_alloc(&dsn, &dd, &stats, NULL);
   if (rc) {
     return rc;
   }
   memcpy(ddname, dd.s99tupar, dd.s99tulng);
   ddname[dd.s99tulng] = '\0';
 
-  rc = init_dsnam_text_unit(argv[1], &dsn);
+  rc = init_dsnam_text_unit(argv[1], &dsn, NULL);
   if (rc) {
     return 4;
   }
-  rc = dsdd_alloc(&dsn, &dd, &stats);
+  rc = dsdd_alloc(&dsn, &dd, &stats, NULL);
   if (rc) {
     return 4;
   }

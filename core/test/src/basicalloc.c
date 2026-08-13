@@ -32,19 +32,19 @@ static int pass(void)
   struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
   struct s99_common_text_unit stats = { DALSTATS, 1, 1, {0x8} };
 
-  rc = init_dsnam_text_unit(PASSLIB, &dsn);
+  rc = init_dsnam_text_unit(PASSLIB, &dsn, NULL);
   if (rc) {
     return rc;
   }
-  rc = dsdd_alloc(&dsn, &dd, &stats);
+  rc = dsdd_alloc(&dsn, &dd, &stats, NULL);
   if (rc) {
     return rc;
   }
   memcpy(ddname, dd.s99tupar, dd.s99tulng);
-  ddname[dd.s99tulng] = '\0';  
+  ddname[dd.s99tulng] = '\0';
 
-	printf("Allocate DD:%s to %s\n", ddname, PASSLIB);
-	rc = dsdd_alloc(&dsn, &dd, &stats);
+ printf("Allocate DD:%s to %s\n", ddname, PASSLIB);
+ rc = dsdd_alloc(&dsn, &dd, &stats, NULL);
 
   if (rc) {
     return rc;
