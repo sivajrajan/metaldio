@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
   char* ds;
   char* mem;
   size_t memlen;
+  DBG_Opts opts = { .verbose = 1, .debug = 0, .info_buffer = NULL, .error_buffer = NULL };
 
   char ddname[8+1];
 
@@ -66,22 +67,22 @@ int main(int argc, char* argv[]) {
   rc = uppercase(argv[1]);
   rc = uppercase(argv[2]);
 
-  rc = init_dsnam_text_unit(argv[1], &dsn);
+  rc = init_dsnam_text_unit(argv[1], &dsn, NULL);
   if (rc) {
     return rc;
   }
-  rc = dsdd_alloc(&dsn, &dd, &stats);
+  rc = dsdd_alloc(&dsn, &dd, &stats, NULL);
   if (rc) {
     return rc;
   }
   memcpy(ddname, dd.s99tupar, dd.s99tulng);
   ddname[dd.s99tulng] = '\0';
 
-  rc = init_dsnam_text_unit(argv[1], &dsn);
+  rc = init_dsnam_text_unit(argv[1], &dsn, NULL);
   if (rc) {
     return 4;
   }
-  rc = dsdd_alloc(&dsn, &dd, &stats);
+  rc = dsdd_alloc(&dsn, &dd, &stats, NULL);
   if (rc) {
     return 4;
   }
@@ -113,9 +114,9 @@ int main(int argc, char* argv[]) {
 printf("Before DCB:%p DCBE:%p EODAD:%p\n", dcb, dcb->dcbdcbe, dcb->dcbdcbe->eodad);
 
   fprintf(stdout, "DCB:%p\n", dcb);
-  dumpstg(stdout, dcb, sizeof(struct ihadcb));
+  dumpstg(&opts, dcb, sizeof(struct ihadcb));
   fprintf(stdout, "\nDCBE:%p\n", dcb->dcbdcbe);
-  dumpstg(stdout, dcb->dcbdcbe, sizeof(struct dcbe));
+  dumpstg(&opts, dcb->dcbdcbe, sizeof(struct dcbe));
   fprintf(stdout, "\n");
 
   rc = OPEN(opencb);
@@ -238,7 +239,7 @@ printf("Before DCB:%p DCBE:%p EODAD:%p\n", dcb, dcb->dcbdcbe, dcb->dcbdcbe->eoda
   }
 
   fprintf(stdout, "Block read:%p (%d bytes)\n", block, dcb->dcbblksi);
-  dumpstg(stdout, block, dcb->dcbblksi);
+  dumpstg(&opts, block, dcb->dcbblksi);
   fprintf(stdout, "\n");
 
   iob = (struct iob* PTR32) decb->stat_addr;
