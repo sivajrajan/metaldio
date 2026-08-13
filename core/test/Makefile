@@ -2,8 +2,10 @@ SRCDIR=src
 DEPDIR=src/deps
 BLDDIR=obj
 ARDIR=../lib
+SVCDIR=../../services/lib
 BINDIR=bin
 archive=libbpamiocore.a
+svcarchive=libbpamiosvcs.a
 
 csource := $(shell find $(SRCDIR) -type f -name *.c)
 cobjs   := $(patsubst $(SRCDIR)/%,$(BLDDIR)/%,$(csource:.c=.o))
@@ -24,27 +26,27 @@ include $(cdeps)
 
 INCDIR=include
 
-$(BINDIR)/basicrddir: $(BLDDIR)/basicrddir.o $(ARDIR)/$(archive)
+$(BINDIR)/basicrddir: $(BLDDIR)/basicrddir.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
 	mkdir -p $(BINDIR) ;
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
-$(BINDIR)/basicread: $(BLDDIR)/basicread.o $(ARDIR)/$(archive)
+$(BINDIR)/basicread: $(BLDDIR)/basicread.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
 	mkdir -p $(BINDIR) ;
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
-$(BINDIR)/basiccreate: $(BLDDIR)/basiccreate.o $(ARDIR)/$(archive)
+$(BINDIR)/basiccreate: $(BLDDIR)/basiccreate.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
 	mkdir -p $(BINDIR) ;
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
-$(BINDIR)/basicenq: $(BLDDIR)/basicenq.o $(ARDIR)/$(archive)
+$(BINDIR)/basicenq: $(BLDDIR)/basicenq.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
 	mkdir -p $(BINDIR) ;
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
-$(BINDIR)/basicmem: $(BLDDIR)/basicmem.o $(ARDIR)/$(archive)
+$(BINDIR)/basicmem: $(BLDDIR)/basicmem.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
 	mkdir -p $(BINDIR) ;
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
-$(BINDIR)/basicalloc: $(BLDDIR)/basicalloc.o $(ARDIR)/$(archive)
+$(BINDIR)/basicalloc: $(BLDDIR)/basicalloc.o $(ARDIR)/$(archive) $(SVCDIR)/$(svcarchive)
 	mkdir -p $(BINDIR) ;
 	$(LD) $(LDFLAGS) -o $@ $^ >$@.llst
 
