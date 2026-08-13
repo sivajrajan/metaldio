@@ -5,6 +5,7 @@
 #include "metaldio.h"
 #include "dio.h"
 #include "mem.h"
+#include "msg.h"
 #include "s99.h"
 #include "wrappers.h"
 #include "msg.h"
