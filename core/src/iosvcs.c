@@ -4,7 +4,6 @@
 #include "metaldio.h"
 #include "dio.h"
 #include "mem.h"
-#include "msg.h"
 #include "ihadcb.h"
 #include "iosvcs.h"
 #include "s99.h"
