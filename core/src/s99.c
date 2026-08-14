@@ -179,13 +179,12 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 
 	rc = S99MSG(msgparms);
 	if (rc) {
-		/* Only emit the raw diagnostic dump when the caller has
-		 * requested debug output; suppress it on normal runs so
-		 * that commands like "decho -a" do not spill internal SVC99
-		 * internals to stderr.                                        */
+		/* Always emit the concise human-readable failure messages so
+		 * that callers using error_buffer receive an explanation.
+		 * Guard only the raw internal dump behind the debug flag.    */
+		errmsg(opts, "SVC99MSG rc:0x%x\n", rc);
+		errmsg(opts, "IEFDB476 failed with rc:0x%x\n", rc);
 		if (opts && opts->debug) {
-			errmsg(opts, "SVC99MSG rc:0x%x\n", rc);
-			errmsg(opts, "IEFDB476 failed with rc:0x%x\n", rc);
 			s99_em_fmt_dmp(opts, msgparms);
 		}
 	} else {

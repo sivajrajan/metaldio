@@ -6,7 +6,7 @@
 #include "mem.h"
 #include "s99.h"
 #include "iosvcs.h"
-
+#include "dio.h"
 /*
  * basicddfreetest.c  -  Regression test for the S0C4 fix in iosvcs.c / s99.c
  *
@@ -39,7 +39,7 @@
  *
  * Test 3 - s99_prt_msg() with opts==NULL: NULL guard must hold
  *   Calls s99_prt_msg() directly with opts==NULL and a synthetic s99rb
- *   (verb=S99VRBUN so emidnum→EMFREE, matching the ddfree() error path).
+ *   (verb=S99VRBUN so emidnumEMFREE, matching the ddfree() error path).
  *   Confirms that the if (opts && opts->debug) guard prevents any
  *   dereference of opts and that s99_em_fmt_dmp() is not reached.
  */
@@ -68,7 +68,7 @@ static void record_fail(const char *name, const char *reason)
  * Test 1 - dsdd_alloc / ddfree round-trip
  *
  * Pattern taken from basicalloc.c:
- *   init_dsnam_text_unit → dsdd_alloc → capture DDname → ddfree
+ *   init_dsnam_text_unit  dsdd_alloc  capture DDname  ddfree
  * opts==NULL throughout, matching the fixed code in both iosvcs.c
  * functions.  ddfree() must return 0.
  */
@@ -165,7 +165,7 @@ static void test_ddfree_null_opts_on_error(void)
  * Test 3 - s99_prt_msg() with opts==NULL: guard in s99_prt_msg
  *
  * Calls s99_prt_msg() directly with opts==NULL.  Uses S99VRBUN so
- * emidnum→EMFREE, the same path taken by ddfree() on error.
+ * emidnumEMFREE, the same path taken by ddfree() on error.
  *
  * All SVC99 control blocks are allocated below the bar (MALLOC31) as
  * required for SVC99 / S99MSG.  The text-unit pointer array has the
@@ -201,7 +201,7 @@ static void test_s99_prt_msg_null_opts(void)
     memset(fake_rbx, 0, sizeof(struct s99_rbx));
 
     fake_rb->s99rbln  = (unsigned char) sizeof(struct s99rb);
-    fake_rb->s99verb  = S99VRBUN;      /* UNFREE → emidnum = EMFREE (51) */
+    fake_rb->s99verb  = S99VRBUN;      /* UNFREE  emidnum = EMFREE (51) */
     fake_rb->s99error = 0x0238;        /* plausible SVC99 error code      */
     fake_rb->s99txtpp = txtpp;
     fake_rb->s99s99x  = fake_rbx;
