@@ -947,7 +947,15 @@ struct desp* PTR32 find_desp(FM_BPAMHandle* bh, const char* memname, const DBG_O
   /* call DESERV and get extended attributes */
   int rc = DESERV(desp);
   if (rc) {
-    errmsg(opts, "Unable to PERFORM DESERV. rc:0x%x\n", rc);
+    /*
+     * Suppress the error only when the member was simply not found
+     * (desl_code_notfound).  Any other failure (invalid control blocks,
+     * storage problems, I/O errors, etc.) is always reported.
+     */
+    if (desp->desp_name_list_ptr->desl_code != desl_code_notfound) {
+      errmsg(opts, "Unable to PERFORM DESERV. rc:0x%x rsn:0x%x\n", rc,
+             desp->desp_name_list_ptr->desl_errcode);
+    }
     return NULL;
   }
 

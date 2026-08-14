@@ -546,7 +546,11 @@ int readmemdir_entry(FM_BPAMHandle* bh, const char* mem, struct mstat* mstat, co
     
   desp = find_desp(bh, mem, opts);
   if (!desp) {
-    errmsg(opts, "Unable to find member %s.\n", mem);
+    /* Member not found is a normal outcome when writing a new member.
+     * Only log under debug to avoid spurious stderr on normal runs.   */
+    if (opts && opts->debug) {
+      errmsg(opts, "Unable to find member %s.\n", mem);
+    }
     return 4;
   }
 

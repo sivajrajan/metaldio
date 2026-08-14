@@ -64,9 +64,13 @@ int ddfree(struct s99_common_text_unit* dd)
   rc = S99(parms);
   if (rc) {
 #ifdef DEBUG
-    s99_fmt_dmp(stderr, parms);
+    s99_fmt_dmp(NULL, parms);
 #endif
-    s99_prt_msg(stderr, parms, rc);
+    /* Pass NULL, not stderr: s99_prt_msg() expects a DBG_Opts*, not a FILE*.
+     * Passing stderr causes info()/errmsg() to dereference the FILE struct
+     * as a DBG_Opts, hitting opts->info_buffer (a non-NULL garbage value from
+     * the FILE struct bytes) and attempting to write into it -> S0C4.        */
+    s99_prt_msg(NULL, parms, rc);
     return rc;
   }
 

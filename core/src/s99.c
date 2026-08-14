@@ -179,9 +179,14 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 
 	rc = S99MSG(msgparms);
 	if (rc) {
+		/* Always emit the concise human-readable failure messages so
+		 * that callers using error_buffer receive an explanation.
+		 * Guard only the raw internal dump behind the debug flag.    */
 		errmsg(opts, "SVC99MSG rc:0x%x\n", rc);
 		errmsg(opts, "IEFDB476 failed with rc:0x%x\n", rc);
-		s99_em_fmt_dmp(stderr, msgparms);
+		if (opts && opts->debug) {
+			s99_em_fmt_dmp(opts, msgparms);
+		}
 	} else {
 		info(opts, "%.*s\n", msgparms->embuf.embufl1, &msgparms->embuf.embuft1[msgparms->embuf.embufo1]);
 		info(opts, "%.*s\n", msgparms->embuf.embufl2, &msgparms->embuf.embuft2[msgparms->embuf.embufo2]);
