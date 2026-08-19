@@ -46,7 +46,7 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
   return IOSVC_ERR_NOERROR;
 }
 
-int ddfree(struct s99_common_text_unit* dd)
+int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
 {
   struct s99rb* PTR32 parms;
   enum s99_verb verb = S99VRBUN;
@@ -58,19 +58,16 @@ int ddfree(struct s99_common_text_unit* dd)
 
   parms = s99_init(verb, s99flag1, s99flag2, &s99rbx, num_text_units, dd );
   if (!parms) {
-    fprintf(stderr, "Unable to initialize SVC99 (DYNFREE) control blocks\n");
+    errmsg(opts, "Unable to initialize SVC99 (DYNFREE) control blocks\n");
     return 16;
   }
   rc = S99(parms);
   if (rc) {
 #ifdef DEBUG
-    s99_fmt_dmp(NULL, parms);
+    s99_fmt_dmp(opts, parms);
 #endif
-    /* Pass NULL, not stderr: s99_prt_msg() expects a DBG_Opts*, not a FILE*.
-     * Passing stderr causes info()/errmsg() to dereference the FILE struct
-     * as a DBG_Opts, hitting opts->info_buffer (a non-NULL garbage value from
-     * the FILE struct bytes) and attempting to write into it -> S0C4.        */
-    s99_prt_msg(NULL, parms, rc);
+    s99_prt_msg(opts, parms, rc);
+    s99_free(parms);
     return rc;
   }
 
