@@ -861,16 +861,25 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
+    /* DYNFREE and free bh so neither the DD allocation nor the heap
+     * struct is orphaned when closecb storage is unavailable.         */
+    ddfree(&dd, opts);
+    free(bh);
     return 4;
   }
   *closecb = closecb_template;
   closecb->dcb24 = bh->dcb;
 
   rc = CLOSE(closecb);
+  /* closecb is not referenced after CLOSE returns; free it now on
+   * every path to recover the MALLOC31 (below-the-bar) storage.      */
+  FREE31(closecb);
+  closecb = NULL;
+
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
     /* Still attempt DYNFREE and free the handle so we leave no leaks.
-     * ddfree() failure here is secondary; preserve the CLOSE rc. */
+     * ddfree() failure here is secondary; preserve the CLOSE rc.     */
     ddfree(&dd, opts);
     free(bh);
     return rc;
