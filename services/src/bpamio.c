@@ -869,11 +869,19 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   rc = CLOSE(closecb);
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
+    /* Still attempt DYNFREE and free the handle so we leave no leaks.
+     * ddfree() failure here is secondary; preserve the CLOSE rc. */
+    ddfree(&dd, opts);
+    free(bh);
     return rc;
   }
 
-  rc = ddfree(&dd);
   debug(opts, "Free DD:%s\n", bh->ddname);
+  rc = ddfree(&dd, opts);
+  if (rc) {
+    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
+           bh->ddname, rc);
+  }
 
   free(bh);
 
