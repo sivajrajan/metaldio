@@ -52,6 +52,7 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   enum s99_verb verb = S99VRBUN;
   struct s99_flag1 s99flag1 = {0};
   struct s99_flag2 s99flag2 = {0};
+  s99flag2.s99tioex = 1; /* search XTIOT as well as classic TIOT */
   size_t num_text_units = 1;
   int rc;
   struct s99_rbx s99rbx = s99rbxtemplate;

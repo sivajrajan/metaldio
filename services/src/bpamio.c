@@ -11,7 +11,6 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <sys/ps.h>
-#include <unistd.h>
 
 #include "metaldio.h"
 
@@ -888,20 +887,9 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
 
   debug(opts, "Free DD:%s\n", bh->ddname);
   rc = ddfree(&dd, opts);
-  if (rc != 0) {
-    /* SRM can pre-empt the TIOT entry between CLOSE and DYNFREE on some
-     * system configurations, causing SVC 99 to return rc=12 (s99error=0x0438,
-     * DD not in TIOT).  One retry after a 1-second yield gives SRM time to
-     * settle the race window.                                                */
-    sleep(1);
-    int retry_rc = ddfree(&dd, opts);
-    if (retry_rc == 0) {
-      rc = 0;
-    } else {
-      errmsg(opts, "DYNFREE (UNFREE) failed for DD:%.*s rc:%d (retry rc:%d)"
-             " - dataset may remain allocated\n",
-             dd.s99tulng, dd.s99tupar, rc, retry_rc);
-    }
+  if (rc) {
+    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
+           bh->ddname, rc);
   }
 
   free(bh);
