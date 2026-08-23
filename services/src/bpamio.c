@@ -58,12 +58,14 @@ static int bpam_open(FM_BPAMHandle* handle, int mode, const DBG_Opts* opts)
       break;
     default:
       errmsg(opts, "bpam_open function only supports INPUT and OUTPUT. %d specified\n", mode);
+      dcb_free(dcb);
       return 4;
   }
 
   opencb = MALLOC31(sizeof(struct opencb));
   if (!opencb) {
     errmsg(opts, "Unable to obtain storage for OPEN cb\n");
+    dcb_free(dcb);
     return 4;
   }
   *opencb = opencb_template;
@@ -71,29 +73,65 @@ static int bpam_open(FM_BPAMHandle* handle, int mode, const DBG_Opts* opts)
   opencb->mode = mode;
 
   rc = OPEN(opencb);
+  FREE31(opencb);     /* opencb is only needed for the OPEN call itself */
+  opencb = NULL;
   if (rc) {
     errmsg(opts, "Unable to perform OPEN. rc:%d\n", rc);
+    dcb_free(dcb);
     return rc;
   }
 
   if (!dcb->dcbdsgpo) {
+    /*
+     * Dataset is a PDS, not a PDSE.  OPEN succeeded so we must issue
+     * CLOSE before releasing the DCB to avoid S99ERROR:0x03A8 on the
+     * subsequent DYNFREE (UNFREE) in the caller.
+     */
     errmsg(opts, "Dataset is not a PDSE.\n");
+    const struct closecb closecb_template = { 1, 0, 0 };
+    struct closecb* PTR32 closecb = MALLOC31(sizeof(struct closecb));
+    if (closecb) {
+      *closecb = closecb_template;
+      closecb->dcb24 = dcb;
+      CLOSE(closecb);
+      FREE31(closecb);
+    }
+    dcb_free(dcb);
     return 4;
   }
 
   decb = MALLOC24(sizeof(struct decb));
   if (!decb) {
     errmsg(opts, "Unable to obtain storage for WRITE decb\n");
+    const struct closecb closecb_template = { 1, 0, 0 };
+    struct closecb* PTR32 closecb = MALLOC31(sizeof(struct closecb));
+    if (closecb) {
+      *closecb = closecb_template;
+      closecb->dcb24 = dcb;
+      CLOSE(closecb);
+      FREE31(closecb);
+    }
+    dcb_free(dcb);
     return 4;
   }
   block = MALLOC24(dcb->dcbblksi);
   if (!block) {
     errmsg(opts, "Unable to obtain storage for WRITE block\n");
+    FREE24(decb, sizeof(struct decb));
+    const struct closecb closecb_template = { 1, 0, 0 };
+    struct closecb* PTR32 closecb = MALLOC31(sizeof(struct closecb));
+    if (closecb) {
+      *closecb = closecb_template;
+      closecb->dcb24 = dcb;
+      CLOSE(closecb);
+      FREE31(closecb);
+    }
+    dcb_free(dcb);
     return 4;
   }
 
   handle->dcb = dcb;
-  handle->opencb = opencb;
+  handle->opencb = NULL;  /* opencb was freed after OPEN; field unused */
   handle->decb = decb;
   handle->block = block;
   handle->block_size = dcb->dcbblksi;
@@ -789,8 +827,8 @@ int write_member_dir_entry(const struct mstat* mstat, FM_BPAMHandle* bh, const D
 
 static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
-  struct s99_common_text_unit dsn   = { DALDSNAM, 1, 0, 0 };
-  struct s99_common_text_unit dd    = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
+  struct s99_common_text_unit dsn = { DALDSNAM, 1, 0, {0} };
+  struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
   struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
 
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
@@ -798,17 +836,21 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
     return rc;
   }
   /*
-   * Use dsdd_alloc_autoclose so that MVS ties the DD lifecycle to the CLOSE
-   * macro.  Without DALCLOSE, SVC 99 UNFREE fails with S99ERROR:0x03A8 after
-   * a BPAM OPEN, leaving the DD allocated and blocking subsequent writes.
+   * Allocate with DALCLOSE so MVS automatically unallocates the DD when
+   * the DCB is closed via CLOSE.  This eliminates S99ERROR:0x03A8 that
+   * occurs when DYNFREE (SVC 99 UNFREE) is attempted after a BPAM OPEN.
    */
   rc = dsdd_alloc_autoclose(&dsn, &dd, &stats, opts);
   if (rc) {
     return rc;
   }
 
+  /*
+   * Copy system generated DD name into passed in handle
+   */
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
+
   debug(opts, "Allocated DD:%s to %s\n", bh->ddname, dataset);
 
   return 0;
@@ -818,34 +860,62 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
 {
   FM_BPAMHandle * bh = calloc(sizeof(FM_BPAMHandle), 1);
   if (!bh) {
-    return bh;
-  }
-  int rc = alloc_pds(dataset, bh, opts);
-  if (!rc) {
-    rc = bpam_open_read(bh, opts);
-  }
-  if (rc) {
     return NULL;
-  } else {
-    return bh;
   }
+  int alloc_rc = alloc_pds(dataset, bh, opts);
+  if (alloc_rc) {
+    free(bh);
+    return NULL;
+  }
+  int open_rc = bpam_open_read(bh, opts);
+  if (open_rc) {
+    /*
+     * Best-effort cleanup: free the DD if DALCLOSE has not already done so.
+     * If bpam_open() issued CLOSE internally (e.g. dcbdsgpo failure),
+     * DALCLOSE already freed the DD and ddfree() will return non-zero --
+     * that failure is expected and intentionally ignored here.
+     * If bpam_open() failed before OPEN was issued, ddfree() will succeed.
+     */
+    struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, {0} };
+    int ddname_len = (int)strlen(bh->ddname);
+    dd.s99tulng = (unsigned short)ddname_len;
+    memcpy(dd.s99tupar, bh->ddname, (size_t)ddname_len);
+    ddfree(&dd, NULL);   /* NULL opts: suppress expected failure message */
+    free(bh);
+    return NULL;
+  }
+  return bh;
 }
 
 FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
 {
-  FM_BPAMHandle*bh = calloc(sizeof(FM_BPAMHandle), 1);
+  FM_BPAMHandle *bh = calloc(sizeof(FM_BPAMHandle), 1);
   if (!bh) {
-    return bh;
-  }
-  int rc = alloc_pds(dataset, bh, opts);
-  if (!rc) {
-    rc = bpam_open_write(bh, opts);
-  }
-  if (rc) {
     return NULL;
-  } else {
-    return bh;
   }
+  int alloc_rc = alloc_pds(dataset, bh, opts);
+  if (alloc_rc) {
+    free(bh);
+    return NULL;
+  }
+  int open_rc = bpam_open_write(bh, opts);
+  if (open_rc) {
+    /*
+     * Best-effort cleanup: free the DD if DALCLOSE has not already done so.
+     * If bpam_open() issued CLOSE internally (e.g. dcbdsgpo failure),
+     * DALCLOSE already freed the DD and ddfree() will return non-zero --
+     * that failure is expected and intentionally ignored here.
+     * If bpam_open() failed before OPEN was issued, ddfree() will succeed.
+     */
+    struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, {0} };
+    int ddname_len = (int)strlen(bh->ddname);
+    dd.s99tulng = (unsigned short)ddname_len;
+    memcpy(dd.s99tupar, bh->ddname, (size_t)ddname_len);
+    ddfree(&dd, NULL);   /* NULL opts: suppress expected failure message */
+    free(bh);
+    return NULL;
+  }
+  return bh;
 }
 
 int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
@@ -856,7 +926,17 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
 
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
+    /*
+     * Cannot issue CLOSE.  The DD was allocated with DALCLOSE so it will
+     * never be auto-freed.  Fall back to an explicit DYNFREE to avoid a
+     * permanent DD leak.
+     */
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
+    struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, {0} };
+    int ddname_len = (int)strlen(bh->ddname);
+    dd.s99tulng = (unsigned short)ddname_len;
+    memcpy(dd.s99tupar, bh->ddname, (size_t)ddname_len);
+    ddfree(&dd, opts);
     free(bh);
     return 4;
   }
@@ -864,10 +944,6 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   closecb->dcb24 = bh->dcb;
 
   rc = CLOSE(closecb);
-  /*
-   * closecb is not referenced after CLOSE returns; free it now on every
-   * path to recover the MALLOC31 (below-the-bar) storage.
-   */
   FREE31(closecb);
   closecb = NULL;
 
@@ -878,12 +954,11 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   }
 
   /*
-   * The DD was allocated with DALCLOSE (via dsdd_alloc_autoclose), so MVS
-   * automatically unallocates it when CLOSE completes.  No explicit SVC 99
-   * UNFREE is required or valid here — calling it would fail with
-   * S99ERROR:0x03A8 and leave the DD allocated, blocking subsequent writes.
+   * The DD was allocated with DALCLOSE.  MVS auto-unallocated the DD when
+   * CLOSE completed above.  No explicit DYNFREE (SVC 99 UNFREE) is needed
+   * or safe to call -- it would fail with S99ERROR:0x03A8.
    */
-  debug(opts, "Closed DD:%s (auto-freed by DALCLOSE)\n", bh->ddname);
+  debug(opts, "DD:%s released by DALCLOSE on CLOSE\n", bh->ddname);
 
   free(bh);
   return 0;
