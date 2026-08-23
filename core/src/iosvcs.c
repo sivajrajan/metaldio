@@ -57,6 +57,12 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   int rc;
   struct s99_rbx s99rbx = s99rbxtemplate;
 
+  /* DBG: print the DD name and key being passed to SVC 99 UNFREE so we
+   * can compare with what alloc_pds() stored in the handle at open time. */
+  errmsg(opts, "IOSVCS ddfree: entry DUNDDNAM key:0x%04X len:%d DD:[%.*s]\n",
+         (unsigned)dd->s99tukey, (int)dd->s99tulng,
+         (int)dd->s99tulng, dd->s99tupar);
+
   parms = s99_init(verb, s99flag1, s99flag2, &s99rbx, num_text_units, dd );
   if (!parms) {
     errmsg(opts, "Unable to initialize SVC99 (DYNFREE) control blocks\n");
@@ -64,6 +70,12 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   }
   rc = S99(parms);
   if (rc) {
+    /* DBG: unconditionally emit S99ERROR and S99INFO so the root cause
+     * is visible even without debug mode.  S99ERROR 0x0230 = "DD not in
+     * TIOT/XTIOT" (S99ECSVU), which would mean the DD was already freed
+     * or was never successfully allocated.                              */
+    errmsg(opts, "IOSVCS ddfree: SVC99 UNFREE failed rc:%d S99ERROR:0x%04X S99INFO:0x%04X\n",
+           rc, (unsigned)parms->s99error, (unsigned)parms->s99info);
     if (opts && opts->debug) {
       s99_fmt_dmp(opts, parms);
     }
@@ -71,6 +83,9 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
     s99_free(parms);
     return rc;
   }
+
+  errmsg(opts, "IOSVCS ddfree: SVC99 UNFREE OK for DD:[%.*s]\n",
+         (int)dd->s99tulng, dd->s99tupar);
 
   s99_free(parms);
   return 0;

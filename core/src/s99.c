@@ -171,7 +171,15 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 	msgparms->emwtpcdp = &msgparms->emwtdert;
 	msgparms->embufp = &msgparms->embuf;
 
-	if (opts && opts->debug) {
+	/* DBG: for UNFREE failures always emit S99ERROR/S99INFO regardless of
+	 * debug mode so the root cause (e.g. 0x0230 = S99ECSVU "DD not in TIOT")
+	 * is captured in the standard test log without needing -d.             */
+	if (svc99parms->s99verb == S99VRBUN) {
+		errmsg(opts, "S99 UNFREE: rc:0x%x S99ERROR:0x%04X S99INFO:0x%04X\n",
+			svc99rc,
+			(unsigned)svc99parms->s99error,
+			(unsigned)svc99parms->s99info);
+	} else if (opts && opts->debug) {
 		errmsg(opts, "SVC99 parms:%p rc:0x%x\n", svc99parms, svc99rc);
 		errmsg(opts, "SVC99 S99ERROR:0x%04X S99INFO:0x%04X\n",
 			(unsigned)svc99parms->s99error, (unsigned)svc99parms->s99info);

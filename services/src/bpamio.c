@@ -808,6 +808,11 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
 
+  /* DBG: always print the allocated DD name so we can confirm it reaches
+   * close_pds() unchanged and that dynalloc succeeded for this dataset.  */
+  errmsg(opts, "BPAMIO alloc_pds: dsdd_alloc OK - DD:%.8s len:%d ds:%s\n",
+         bh->ddname, (int)dd.s99tulng, dataset);
+
   debug(opts, "Allocated DD:%s to %s\n", bh->ddname, dataset);
 
   return 0;
@@ -858,6 +863,12 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   dd.s99tulng = ddname_len;
   memcpy(dd.s99tupar, bh->ddname, ddname_len);
 
+  /* DBG: print the DD name we are about to CLOSE and then UNFREE.
+   * Compare this against the "alloc_pds: dsdd_alloc OK - DD:" line above
+   * to confirm the same DD name reaches both sides of the open/close pair. */
+  errmsg(opts, "BPAMIO close_pds: entry DD:%.8s ddname_len:%d\n",
+         bh->ddname, ddname_len);
+
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
@@ -876,6 +887,10 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   FREE31(closecb);
   closecb = NULL;
 
+  /* DBG: report CLOSE outcome so we can see if CLOSE itself failed
+   * (rc!=0) before we even attempt the UNFREE.                       */
+  errmsg(opts, "BPAMIO close_pds: CLOSE rc:%d for DD:%.8s\n", rc, bh->ddname);
+
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
     /* Still attempt DYNFREE and free the handle so we leave no leaks.
@@ -890,6 +905,15 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   if (rc) {
     errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
            bh->ddname, rc);
+    /* DBG: dump the DUNDDNAM text-unit content we passed to ddfree() to
+     * confirm the exact byte values SVC 99 received for the DD name.  */
+    errmsg(opts, "BPAMIO close_pds: DUNDDNAM tu key:0x%04X num:%d len:%d par:[",
+           (unsigned)dd.s99tukey, (unsigned)dd.s99tunum, (unsigned)dd.s99tulng);
+    for (int _i = 0; _i < (int)dd.s99tulng && _i < 8; _i++) {
+      errmsg(opts, "%c", (dd.s99tupar[_i] >= 0x40 && dd.s99tupar[_i] <= 0xF9)
+                         ? dd.s99tupar[_i] : '?');
+    }
+    errmsg(opts, "]\n");
   }
 
   free(bh);
