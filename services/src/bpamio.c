@@ -789,30 +789,26 @@ int write_member_dir_entry(const struct mstat* mstat, FM_BPAMHandle* bh, const D
 
 static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
-  struct s99_common_text_unit dsn = { DALDSNAM, 1, 0, 0 };
-  struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
+  struct s99_common_text_unit dsn   = { DALDSNAM, 1, 0, 0 };
+  struct s99_common_text_unit dd    = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
   struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
 
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
   if (rc) {
     return rc;
   }
-  rc = dsdd_alloc(&dsn, &dd, &stats, opts);
+  /*
+   * Use dsdd_alloc_autoclose so that MVS ties the DD lifecycle to the CLOSE
+   * macro.  Without DALCLOSE, SVC 99 UNFREE fails with S99ERROR:0x03A8 after
+   * a BPAM OPEN, leaving the DD allocated and blocking subsequent writes.
+   */
+  rc = dsdd_alloc_autoclose(&dsn, &dd, &stats, opts);
   if (rc) {
     return rc;
   }
 
-  /*
-   * Copy system generated DD name into passed in handle
-   */
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
-
-  /* DBG: always print the allocated DD name so we can confirm it reaches
-   * close_pds() unchanged and that dynalloc succeeded for this dataset.  */
-  errmsg(opts, "BPAMIO alloc_pds: dsdd_alloc OK - DD:%.8s len:%d ds:%s\n",
-         bh->ddname, (int)dd.s99tulng, dataset);
-
   debug(opts, "Allocated DD:%s to %s\n", bh->ddname, dataset);
 
   return 0;
@@ -858,23 +854,9 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   struct closecb* PTR32 closecb;
   int rc;
 
-  struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, 0 };
-  int ddname_len = strlen(bh->ddname);
-  dd.s99tulng = ddname_len;
-  memcpy(dd.s99tupar, bh->ddname, ddname_len);
-
-  /* DBG: print the DD name we are about to CLOSE and then UNFREE.
-   * Compare this against the "alloc_pds: dsdd_alloc OK - DD:" line above
-   * to confirm the same DD name reaches both sides of the open/close pair. */
-  errmsg(opts, "BPAMIO close_pds: entry DD:%.8s ddname_len:%d\n",
-         bh->ddname, ddname_len);
-
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
-    /* DYNFREE and free bh so neither the DD allocation nor the heap
-     * struct is orphaned when closecb storage is unavailable.         */
-    ddfree(&dd, opts);
     free(bh);
     return 4;
   }
@@ -882,43 +864,29 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   closecb->dcb24 = bh->dcb;
 
   rc = CLOSE(closecb);
-  /* closecb is not referenced after CLOSE returns; free it now on
-   * every path to recover the MALLOC31 (below-the-bar) storage.      */
+  /*
+   * closecb is not referenced after CLOSE returns; free it now on every
+   * path to recover the MALLOC31 (below-the-bar) storage.
+   */
   FREE31(closecb);
   closecb = NULL;
 
-  /* DBG: report CLOSE outcome so we can see if CLOSE itself failed
-   * (rc!=0) before we even attempt the UNFREE.                       */
-  errmsg(opts, "BPAMIO close_pds: CLOSE rc:%d for DD:%.8s\n", rc, bh->ddname);
-
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
-    /* Still attempt DYNFREE and free the handle so we leave no leaks.
-     * ddfree() failure here is secondary; preserve the CLOSE rc.     */
-    ddfree(&dd, opts);
     free(bh);
     return rc;
   }
 
-  debug(opts, "Free DD:%s\n", bh->ddname);
-  rc = ddfree(&dd, opts);
-  if (rc) {
-    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
-           bh->ddname, rc);
-    /* DBG: dump the DUNDDNAM text-unit content we passed to ddfree() to
-     * confirm the exact byte values SVC 99 received for the DD name.  */
-    errmsg(opts, "BPAMIO close_pds: DUNDDNAM tu key:0x%04X num:%d len:%d par:[",
-           (unsigned)dd.s99tukey, (unsigned)dd.s99tunum, (unsigned)dd.s99tulng);
-    for (int _i = 0; _i < (int)dd.s99tulng && _i < 8; _i++) {
-      errmsg(opts, "%c", (dd.s99tupar[_i] >= 0x40 && dd.s99tupar[_i] <= 0xF9)
-                         ? dd.s99tupar[_i] : '?');
-    }
-    errmsg(opts, "]\n");
-  }
+  /*
+   * The DD was allocated with DALCLOSE (via dsdd_alloc_autoclose), so MVS
+   * automatically unallocates it when CLOSE completes.  No explicit SVC 99
+   * UNFREE is required or valid here — calling it would fail with
+   * S99ERROR:0x03A8 and leave the DD allocated, blocking subsequent writes.
+   */
+  debug(opts, "Closed DD:%s (auto-freed by DALCLOSE)\n", bh->ddname);
 
   free(bh);
-
-  return rc;
+  return 0;
 }
 
 struct desp* PTR32 find_desp(FM_BPAMHandle* bh, const char* memname, const DBG_Opts* opts)

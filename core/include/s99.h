@@ -120,6 +120,14 @@ struct s99_text_unit {
 #define DALNDISP 0x05
 #define DALEROPT 0x3D
 #define DALRTDDN 0x55
+/*
+ * DALCLOSE (key 0x58): zero-length text unit included in a SVC 99 ALLOC
+ * request to instruct MVS to automatically unallocate the DD when the DCB
+ * opened against it is subsequently closed via the CLOSE macro.  This
+ * avoids S99ERROR:0x03A8 ("BPAM-owned DD") returned by SVC 99 UNFREE when
+ * called after a BPAM OPEN/CLOSE sequence.
+ */
+#define DALCLOSE 0x58
 #define DALBRTKN 0x6E
 #define DALSSREQ 0x5C
 
