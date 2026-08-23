@@ -31,9 +31,9 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
   }
   rc = S99(parms);
   if (rc) {
-#ifdef DEBUG
-    s99_fmt_dmp(opts, parms);
-#endif
+    if (opts && opts->debug) {
+      s99_fmt_dmp(opts, parms);
+    }
     s99_prt_msg(opts, parms, rc);
     return IOSVC_ERR_SVC99_ALLOC_FAILURE;
   }
@@ -64,9 +64,9 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   }
   rc = S99(parms);
   if (rc) {
-#ifdef DEBUG
-    s99_fmt_dmp(opts, parms);
-#endif
+    if (opts && opts->debug) {
+      s99_fmt_dmp(opts, parms);
+    }
     s99_prt_msg(opts, parms, rc);
     s99_free(parms);
     return rc;
