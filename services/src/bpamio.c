@@ -858,6 +858,15 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   dd.s99tulng = ddname_len;
   memcpy(dd.s99tupar, bh->ddname, ddname_len);
 
+  /* Trace the handle state at close time: surfaces the DD name, whether the
+   * dataset is a PDSE (dcbdsgpo), block size, and RECFM byte so we can
+   * confirm the DCB is in the expected state before CLOSE is issued.        */
+  debug(opts, "close_pds: DD='%s' ddname_len=%d dcbdsgpo=%d blksi=%d recfm=0x%02x\n",
+        bh->ddname, ddname_len,
+        (int)bh->dcb->dcbdsgpo,
+        (int)bh->dcb->dcbblksi,
+        (unsigned int)bh->dcb->dcbexlst.dcbrecfm);
+
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
@@ -876,6 +885,8 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   FREE31(closecb);
   closecb = NULL;
 
+  debug(opts, "close_pds: CLOSE rc=%d for DD='%s'\n", rc, bh->ddname);
+
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
     /* Still attempt DYNFREE and free the handle so we leave no leaks.
@@ -885,9 +896,12 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     return rc;
   }
 
-  debug(opts, "Free DD:%s\n", bh->ddname);
+  debug(opts, "close_pds: issuing DYNFREE for DD='%s'\n", bh->ddname);
   rc = ddfree(&dd, opts);
   if (rc) {
+    /* rc=12 / s99error=0x0380 / s99info=0x0058 is the common transient
+     * "DD still in use" race; member data is already written and STOWed.
+     * The verb/rc/error/info line is now always emitted by s99_prt_msg.   */
     errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
            bh->ddname, rc);
   }

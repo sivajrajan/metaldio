@@ -153,9 +153,9 @@ void s99_em_fmt_dmp(const DBG_Opts* opts, struct s99_em* PTR32 parms) {
 		funct, *funct, parms->emidnum, parms->emnmsgbk, parms->ems99rbp, parms->emretcod, parms->emcpplp, parms->embufp, parms->emwtpcdp);
 }
 
-int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99rc) 
+int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99rc)
 {
-	struct s99_em* PTR32 msgparms; 
+	struct s99_em* PTR32 msgparms;
 	int rc;
 
 	msgparms = MALLOC31(sizeof(struct s99_em));
@@ -171,21 +171,27 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 	msgparms->emwtpcdp = &msgparms->emwtdert;
 	msgparms->embufp = &msgparms->embuf;
 
-#if 0
-	errmsg(opts, "SVC99 parms:%p rc:0x%x\n", svc99parms, svc99rc);
-	errmsg(opts, "SVC99 failed with error:%d (0x%x) info: %d (0x%x)\n", 
-		svc99parms->s99error, svc99parms->s99error, svc99parms->s99info, svc99parms->s99info);
-#endif
+	/* Always emit SVC99 error/info codes so the caller can diagnose the
+	 * failure even when IEFDB476 (S99MSG) itself is unavailable.
+	 * verb=S99VRBUN(0x02) is DYNFREE; verb=S99VRBAL(0x01) is DYNALLOC.    */
+	errmsg(opts, "SVC99 verb:0x%x rc:0x%x error:0x%04x info:0x%04x\n",
+		(unsigned int)svc99parms->s99verb,
+		(unsigned int)svc99rc,
+		(unsigned int)svc99parms->s99error,
+		(unsigned int)svc99parms->s99info);
 
 	rc = S99MSG(msgparms);
 	if (rc) {
 		/* Always emit the concise human-readable failure messages so
 		 * that callers using error_buffer receive an explanation.
-		 * Guard only the raw internal dump behind the debug flag.    */
+		 * Guard the raw internal dump behind the debug flag.          */
 		errmsg(opts, "SVC99MSG rc:0x%x\n", rc);
 		errmsg(opts, "IEFDB476 failed with rc:0x%x\n", rc);
 		if (opts && opts->debug) {
 			s99_em_fmt_dmp(opts, msgparms);
+			/* Full SVC99 RB dump when debug is on: shows all text units,
+			 * flag bytes, and the RBX extension for deeper analysis.     */
+			s99_fmt_dmp(opts, svc99parms);
 		}
 	} else {
 		info(opts, "%.*s\n", msgparms->embuf.embufl1, &msgparms->embuf.embuft1[msgparms->embuf.embufo1]);

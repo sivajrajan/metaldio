@@ -31,9 +31,8 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
   }
   rc = S99(parms);
   if (rc) {
-#ifdef DEBUG
-    s99_fmt_dmp(opts, parms);
-#endif
+    /* s99_prt_msg now always emits verb/rc/error/info before trying IEFDB476.
+     * s99_fmt_dmp (full RB hex dump) is emitted by s99_prt_msg when debug is on. */
     s99_prt_msg(opts, parms, rc);
     return IOSVC_ERR_SVC99_ALLOC_FAILURE;
   }
@@ -52,10 +51,18 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   enum s99_verb verb = S99VRBUN;
   struct s99_flag1 s99flag1 = {0};
   struct s99_flag2 s99flag2 = {0};
-  s99flag2.s99tioex = 1; /* search XTIOT as well as classic TIOT */
+  s99flag2.s99tioex = 1; /* search XTIOT as well as classic TIOT; if XTIOT
+                          * lookup also fails rc=0x0c / error=0x0380 /
+                          * info=0x0058 means DD is still in use (exclusive). */
   size_t num_text_units = 1;
   int rc;
   struct s99_rbx s99rbx = s99rbxtemplate;
+
+  /* Trace entry: surface DD name and s99tioex flag so we can confirm the
+   * correct DD is being freed and the XTIOT search is active.              */
+  debug(opts, "ddfree: DD='%.*s' len=%d s99tioex=%d\n",
+        (int)dd->s99tulng, dd->s99tupar, (int)dd->s99tulng,
+        (int)s99flag2.s99tioex);
 
   parms = s99_init(verb, s99flag1, s99flag2, &s99rbx, num_text_units, dd );
   if (!parms) {
@@ -64,9 +71,8 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   }
   rc = S99(parms);
   if (rc) {
-#ifdef DEBUG
-    s99_fmt_dmp(opts, parms);
-#endif
+    /* s99_prt_msg now always emits verb/rc/error/info before trying IEFDB476.
+     * s99_fmt_dmp (full RB hex dump) is emitted by s99_prt_msg when debug is on. */
     s99_prt_msg(opts, parms, rc);
     s99_free(parms);
     return rc;
