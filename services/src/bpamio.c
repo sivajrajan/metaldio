@@ -802,9 +802,6 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
     return rc;
   }
 
-  /*
-   * Copy system generated DD name into passed in handle
-   */
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
 
@@ -818,6 +815,12 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
     return bh;
   }
   int rc = alloc_pds(dataset, bh, opts);
+  if (rc == IOSVC_ERR_SVC99_BORROWED_DD) {
+    /* Dataset not in catalog or already allocated by another holder;
+     * we got a borrowed DD we don't own — skip open to avoid DYNFREE rc=12. */
+    free(bh);
+    return NULL;
+  }
   if (!rc) {
     rc = bpam_open_read(bh, opts);
   }

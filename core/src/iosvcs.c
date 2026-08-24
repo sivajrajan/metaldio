@@ -44,17 +44,15 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
     return IOSVC_ERR_SVC99_ALLOC_FAILURE;
   }
 
-  /* error=0x1708: SVC99 reused an existing DD instead of allocating a
-   * new one (dataset already held in this address space).  The caller
-   * (alloc_pds -> open_pds_for_read probe) will receive a DDname it did
-   * not create; the subsequent close_pds -> ddfree will attempt to free
-   * a BORROWED allocation, which is the root cause of DYNFREE rc=12.   */
-  if (snap_error == 0x1708) {
-    debug(opts, "dsdd_alloc: WARNING error=0x1708 - SVC99 reused an existing DD "
-          "(dataset already allocated); close_pds/ddfree will free a BORROWED DD\n");
-  }
   debug(opts, "dsdd_alloc: S99 rc=%d error=0x%04x info=0x%04x\n",
         rc, (unsigned int)snap_error, (unsigned int)snap_info);
+
+  if (snap_error == 0x1708) {
+    /* SVC99 reused a pre-existing DD; we don't own it, so skip the free. */
+    debug(opts, "dsdd_alloc: error=0x1708 - borrowed DD, returning IOSVC_ERR_SVC99_BORROWED_DD\n");
+    s99_free(parms);
+    return IOSVC_ERR_SVC99_BORROWED_DD;
+  }
 
   struct s99_common_text_unit* ddout = (struct s99_common_text_unit*) parms->s99txtpp[1];
   dd->s99tulng = ddout->s99tulng;
