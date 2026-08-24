@@ -808,7 +808,14 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
 
-  debug(opts, "Allocated DD:%s to %s\n", bh->ddname, dataset);
+  /* dd.s99error is the value SVC99 left in the RB at the time dsdd_alloc
+   * snapped it.  0x1708 means the DDname was borrowed from an existing
+   * allocation; the matching ddfree will try to free a DD it does not own.
+   * Any non-zero value here is a signal that close_pds -> ddfree may fail. */
+  debug(opts, "alloc_pds: DD='%s' for '%s' dsdd_alloc s99error=0x%04x%s\n",
+        bh->ddname, dataset,
+        (unsigned int)dd.s99error,
+        (dd.s99error == 0x1708) ? " [BORROWED - ddfree will likely fail]" : "");
 
   return 0;
 }

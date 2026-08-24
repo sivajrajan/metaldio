@@ -30,12 +30,31 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
     return IOSVC_ERR_SVC99INIT_ALLOC_FAILURE;
   }
   rc = S99(parms);
+
+  /* Snapshot error/info NOW before s99_prt_msg (or anything else) can
+   * overwrite the request block fields.                                 */
+  unsigned short snap_error = parms->s99error;
+  unsigned short snap_info  = parms->s99info;
+
   if (rc) {
-    /* s99_prt_msg now always emits verb/rc/error/info before trying IEFDB476.
-     * s99_fmt_dmp (full RB hex dump) is emitted by s99_prt_msg when debug is on. */
+    /* s99_prt_msg emits verb/rc/error/info then tries IEFDB476.
+     * s99_fmt_dmp (full RB hex dump) fires when debug is on.           */
     s99_prt_msg(opts, parms, rc);
+    s99_free(parms);
     return IOSVC_ERR_SVC99_ALLOC_FAILURE;
   }
+
+  /* error=0x1708: SVC99 reused an existing DD instead of allocating a
+   * new one (dataset already held in this address space).  The caller
+   * (alloc_pds -> open_pds_for_read probe) will receive a DDname it did
+   * not create; the subsequent close_pds -> ddfree will attempt to free
+   * a BORROWED allocation, which is the root cause of DYNFREE rc=12.   */
+  if (snap_error == 0x1708) {
+    debug(opts, "dsdd_alloc: WARNING error=0x1708 - SVC99 reused an existing DD "
+          "(dataset already allocated); close_pds/ddfree will free a BORROWED DD\n");
+  }
+  debug(opts, "dsdd_alloc: S99 rc=%d error=0x%04x info=0x%04x\n",
+        rc, (unsigned int)snap_error, (unsigned int)snap_info);
 
   struct s99_common_text_unit* ddout = (struct s99_common_text_unit*) parms->s99txtpp[1];
   dd->s99tulng = ddout->s99tulng;
@@ -71,8 +90,20 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   }
   rc = S99(parms);
   if (rc) {
-    /* s99_prt_msg now always emits verb/rc/error/info before trying IEFDB476.
-     * s99_fmt_dmp (full RB hex dump) is emitted by s99_prt_msg when debug is on. */
+    /* Snapshot ERCO from the RBX before s99_prt_msg can touch the block.
+     * ERCO is the extended reason code written by DYNFREE itself:
+     *   0x0b = DD in use by another task / existing allocation in this AS
+     *   0x08 = DDname not found in TIOT or XTIOT
+     *   0x04 = DD allocated to a different step
+     * This is the definitive "why" when error=0x03a8 (IEFDB476 unavailable). */
+    unsigned char snap_erco = (parms->s99s99x) ? parms->s99s99x->s99erco : 0xFF;
+    debug(opts, "ddfree: S99 DYNFREE failed rc=0x%x error=0x%04x info=0x%04x ERCO=0x%02x\n",
+          (unsigned int)rc,
+          (unsigned int)parms->s99error,
+          (unsigned int)parms->s99info,
+          (unsigned int)snap_erco);
+    /* s99_prt_msg emits verb/rc/error/info then tries IEFDB476.
+     * s99_fmt_dmp (full RB hex dump) fires when debug is on.           */
     s99_prt_msg(opts, parms, rc);
     s99_free(parms);
     return rc;
