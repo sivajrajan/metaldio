@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <sys/ps.h>
+#include <unistd.h>
 
 #include "metaldio.h"
 
@@ -787,23 +788,67 @@ int write_member_dir_entry(const struct mstat* mstat, FM_BPAMHandle* bh, const D
   return rc;
 }
 
+/* alloc_pds - DYNALLOC a PDS/PDSE dataset for BPAM access.
+ *
+ * DD NAME STRATEGY — why DALDDNAM and not DALRTDDN:
+ *
+ * The original code used DALRTDDN (key 0x55) which asks z/OS to generate
+ * and return a system DD name (SYS00nnn).  System-generated DDs are
+ * catalogued in the XTIOT, not the classic TIOT.  When the BPAM CLOSE macro
+ * returns (rc=0), z/OS completes DCB teardown asynchronously in the XTIOT.
+ * A DYNFREE (DUNDDNAM) issued immediately after CLOSE hits the XTIOT while
+ * the entry is still marked "in use by another task in this address space"
+ * (ERCO=0x0b, S99ERROR=0x03a8, rc=12).  The DD is left allocated, and any
+ * subsequent fopen() from dmod/dsed on the same dataset fails with an
+ * incompatible-disposition error.
+ *
+ * Fix: use DALDDNAM (key 0x01) with an explicitly generated name.
+ * DALDDNAM places the DD in the classic TIOT which is cleaned up
+ * synchronously by CLOSE.  ddfree() with DUNDDNAM then finds the entry
+ * immediately (no XTIOT race) and releases the DD before this function
+ * returns, so subsequent opens by dmod/dsed always succeed.
+ *
+ * DD name generation: same pid-seeded "DD%06d" pattern as libdio/ddopen()
+ * so names are unique per process invocation and fit in 8 characters.      */
 static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
-  struct s99_common_text_unit dsn = { DALDSNAM, 1, 0, 0 };
-  struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
+  /* Generate a unique, explicit DD name — placed in the classic TIOT so
+   * that the subsequent ddfree() (DUNDDNAM) is synchronous after CLOSE.   */
+  char ddname[DD_MAX + 1];
+  srand((unsigned int)getpid());
+  snprintf(ddname, sizeof(ddname), "DD%06d", rand() % 1000000);
+  ddname[DD_MAX] = '\0';
+
+  /* Build text units:
+   *   dsn  — DALDSNAM (0x02): dataset name
+   *   dd   — DALDDNAM (0x01): our explicit DD name (not DALRTDDN/0x55)
+   *   stats— DALSTATS (0x04): DISP=SHR                                    */
+  struct s99_common_text_unit dsn   = { DALDSNAM, 1, 0, 0 };
+  struct s99_common_text_unit dd    = { DALDDNAM, 1, 0, 0 };
   struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
 
+  /* Fill dsn text unit */
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
   if (rc) {
     return rc;
   }
+
+  /* Fill dd text unit with our explicit name */
+  size_t ddname_len = strlen(ddname);
+  dd.s99tulng = (unsigned short)ddname_len;
+  memcpy(dd.s99tupar, ddname, ddname_len);
+
   rc = dsdd_alloc(&dsn, &dd, &stats, opts);
   if (rc) {
     return rc;
   }
 
-  memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
-  bh->ddname[dd.s99tulng] = '\0';
+  /* Record the DD name we supplied — it is already in ddname[], copy to bh */
+  memcpy(bh->ddname, ddname, ddname_len);
+  bh->ddname[ddname_len] = '\0';
+
+  debug(opts, "alloc_pds: allocated DD='%s' for dataset '%s'\n",
+        bh->ddname, dataset);
 
   return 0;
 }

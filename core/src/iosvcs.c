@@ -54,9 +54,15 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
     return IOSVC_ERR_SVC99_BORROWED_DD;
   }
 
-  struct s99_common_text_unit* ddout = (struct s99_common_text_unit*) parms->s99txtpp[1];
-  dd->s99tulng = ddout->s99tulng;
-  memcpy(dd->s99tupar, ddout->s99tupar, dd->s99tulng);
+  /* Copy the DD name back to the caller's text unit ONLY when DALRTDDN
+   * (key 0x55) was used — that is when SVC99 writes the assigned system
+   * DD name into the text unit.  For DALDDNAM (key 0x01) the caller
+   * already knows the name and the text unit is not modified by SVC99.    */
+  if (dd->s99tukey == DALRTDDN) {
+    struct s99_common_text_unit* ddout = (struct s99_common_text_unit*) parms->s99txtpp[1];
+    dd->s99tulng = ddout->s99tulng;
+    memcpy(dd->s99tupar, ddout->s99tupar, dd->s99tulng);
+  }
 
   s99_free(parms);
   return IOSVC_ERR_NOERROR;
