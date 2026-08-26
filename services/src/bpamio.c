@@ -975,19 +975,45 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     return rc;
   }
 
-  /* Free the DCB and its associated MALLOC24 storage (DEB, block, decb,
-   * opencb) BEFORE issuing DYNFREE.
+  /* Zero the DEB pointer in the DCB before freeing any storage and before
+   * issuing DYNFREE.
    *
-   * DYNFREE walks the TIOT entry and checks whether any DEB is still
-   * chained to it (ERCO=0x0b = "open DCB still using this DD").  The
-   * DEB lives inside the MALLOC24 DCB storage allocated in bpam_open().
-   * CLOSE disconnects the dataset from the DCB but does not free the
-   * MALLOC24 storage — the DEB address in dcbdebad.dcbdeba remains
-   * valid until dcb_free() is called.  If DYNFREE fires while the DCB
-   * storage is still live, it sees the DEB pointer → rc=12 / ERCO=0x0b.
+   * How DYNFREE detects "DD in use" (ERCO=0x0b / S99ERROR=0x03a8):
    *
-   * Sequence: CLOSE (disconnects dataset) → dcb_free/FREE24 (removes
-   * the MALLOC24 DEB storage) → DYNFREE (TIOT entry now clean) → free bh. */
+   *   DYNFREE locates the TIOT entry for our DD name, then follows the
+   *   internal TIOT→DEB chain.  The DEB was registered with the TIOT by
+   *   OPEN; on a plain PDS, CLOSE returns rc=0 but does NOT deregister the
+   *   DEB from the TIOT chain — it leaves the DEB address in dcbdebad.dcbdeba
+   *   non-zero inside our MALLOC24 DCB storage.  When DYNFREE subsequently
+   *   walks the chain and finds a non-NULL DEB pointer it concludes the DD is
+   *   still open and returns rc=12 / ERCO=0x0b, regardless of whether we have
+   *   freed the DCB storage or cleared dcbcnsto.
+   *
+   *   (On a PDSE this never happens because IGW manages directory I/O
+   *   internally and CLOSE fully deregisters the DEB before returning.)
+   *
+   * Fix: zero dcbdebad.dcbdeba while the DCB storage is still live (so we
+   * write through a valid pointer), immediately after CLOSE returns and before
+   * dcb_free() / DYNFREE.  With a zero DEB address DYNFREE sees no active DCB
+   * on the DD and proceeds cleanly.
+   *
+   * dcbcnsto is also cleared here for completeness — on a plain PDS CLOSE
+   * leaves it set to 1 ("STOW has been issued"), which some z/OS levels also
+   * inspect during DYNFREE validation.
+   *
+   * Sequence:
+   *   CLOSE  (returns rc=0; DEB still registered in TIOT on plain PDS)
+   *   → zero dcbdebad.dcbdeba  (removes DEB from chain DYNFREE will walk)
+   *   → zero dcbcnsto          (removes "STOW pending" flag for good measure)
+   *   → dcb_free / FREE24      (release MALLOC24 storage — safe now)
+   *   → DYNFREE                (TIOT entry is clean → rc=0)
+   *   → free(bh)
+   */
+  debug(opts, "close_pds: zeroing DEB pointer (dcbdeba=0x%06x) before DYNFREE\n",
+        (unsigned int)bh->dcb->dcbdebad.dcbdeba);
+  bh->dcb->dcbdebad.dcbdeba = 0;   /* detach DEB from TIOT chain DYNFREE walks */
+  bh->dcb->dcbcnsto          = 0;   /* clear "STOW issued" flag (defence-in-depth) */
+
   dcb_free(bh->dcb);
   bh->dcb = NULL;
   FREE24(bh->decb, (unsigned int)sizeof(struct decb));
