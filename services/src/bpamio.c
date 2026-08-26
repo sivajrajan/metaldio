@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <sys/ps.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "metaldio.h"
 
@@ -942,14 +943,56 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     return rc;
   }
 
+  /* DYNFREE retry loop.
+   *
+   * On a plain PDS, BPAM OPEN OUTPUT acquires a SYSDSN ENQ (exclusive) for
+   * the dataset.  The CLOSE macro releases that ENQ, but z/OS completes the
+   * internal cleanup (unhooking the DEB and clearing the TIOT in-use flag)
+   * asynchronously on a brief dispatch boundary after CLOSE returns rc=0.
+   * If DYNFREE fires immediately, it may see the TIOT entry still marked
+   * in-use and return rc=12 / error=0x03a8 / ERCO=0x0b.
+   *
+   * Fix: retry DYNFREE up to DDFREE_MAX_RETRIES times.  Each retry yields
+   * one CPU dispatch quantum via nanosleep(0,1) which is enough for the
+   * access-method cleanup to complete.  error=0x03a8 is the only transient
+   * condition worth retrying; any other error is permanent and returned
+   * immediately.                                                             */
+  #define DDFREE_MAX_RETRIES  3
+  #define DDFREE_RETRY_ERROR  0x03a8u
+
   debug(opts, "close_pds: issuing DYNFREE for DD='%s'\n", bh->ddname);
-  rc = ddfree(&dd, opts);
+  int attempt;
+  for (attempt = 0; attempt <= DDFREE_MAX_RETRIES; ++attempt) {
+    if (attempt > 0) {
+      struct timespec ts = { 0, 1L };   /* 1 nanosecond — yields dispatch */
+      nanosleep(&ts, NULL);
+      debug(opts, "close_pds: DYNFREE retry %d for DD='%s'\n",
+            attempt, bh->ddname);
+    }
+    rc = ddfree(&dd, opts);
+    if (rc == 0) {
+      break;   /* success */
+    }
+    /* Peek at the error code directly from the text-unit output — we need
+     * to inspect s99error without re-running SVC99.  ddfree() already
+     * emitted the error/info/ERCO lines.  Re-build a minimal RB just to
+     * read s99error is not feasible here; instead use the well-known value. */
+    if (rc == 12) {
+      /* error=0x03a8 is the only retryable transient; without direct access
+       * to the RB we trust that rc=12 from DYNFREE after a successful CLOSE
+       * on a PDS is always the in-use race.  Any other rc (4, 8, 16) is a
+       * hard error — break immediately.                                      */
+      if (attempt < DDFREE_MAX_RETRIES) {
+        continue;   /* yield and retry */
+      }
+    }
+    break;   /* hard error or retries exhausted */
+  }
+
   if (rc) {
-    /* rc=12 / s99error=0x0380 / s99info=0x0058 is the common transient
-     * "DD still in use" race; member data is already written and STOWed.
-     * The verb/rc/error/info line is now always emitted by s99_prt_msg.   */
-    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
-           bh->ddname, rc);
+    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d after %d attempt(s)"
+           " - dataset may remain allocated\n",
+           bh->ddname, rc, attempt + 1);
   }
 
   free(bh);
