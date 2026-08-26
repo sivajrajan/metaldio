@@ -12,7 +12,6 @@
 #include <limits.h>
 #include <sys/ps.h>
 #include <unistd.h>
-#include <time.h>
 
 #include "metaldio.h"
 
@@ -952,20 +951,20 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
    * If DYNFREE fires immediately, it may see the TIOT entry still marked
    * in-use and return rc=12 / error=0x03a8 / ERCO=0x0b.
    *
-   * Fix: retry DYNFREE up to DDFREE_MAX_RETRIES times.  Each retry yields
-   * one CPU dispatch quantum via nanosleep(0,1) which is enough for the
-   * access-method cleanup to complete.  error=0x03a8 is the only transient
-   * condition worth retrying; any other error is permanent and returned
-   * immediately.                                                             */
+   * Fix: retry DYNFREE up to DDFREE_MAX_RETRIES times.  Each retry calls
+   * sleep(0) which forces a z/OS CPU dispatch yield (zero wall-clock delay)
+   * and allows the access-method completion to run before the next attempt.
+   * sleep() is available from <unistd.h> already included — no extra headers
+   * or feature-test macros are needed.
+   * error=0x03a8 (rc=12) is the only transient condition worth retrying;
+   * any other error is permanent and returned immediately.                   */
   #define DDFREE_MAX_RETRIES  3
-  #define DDFREE_RETRY_ERROR  0x03a8u
 
   debug(opts, "close_pds: issuing DYNFREE for DD='%s'\n", bh->ddname);
   int attempt;
   for (attempt = 0; attempt <= DDFREE_MAX_RETRIES; ++attempt) {
     if (attempt > 0) {
-      struct timespec ts = { 0, 1L };   /* 1 nanosecond — yields dispatch */
-      nanosleep(&ts, NULL);
+      sleep(0);   /* yield one dispatch quantum; no wall-clock delay */
       debug(opts, "close_pds: DYNFREE retry %d for DD='%s'\n",
             attempt, bh->ddname);
     }
@@ -973,18 +972,11 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     if (rc == 0) {
       break;   /* success */
     }
-    /* Peek at the error code directly from the text-unit output — we need
-     * to inspect s99error without re-running SVC99.  ddfree() already
-     * emitted the error/info/ERCO lines.  Re-build a minimal RB just to
-     * read s99error is not feasible here; instead use the well-known value. */
-    if (rc == 12) {
-      /* error=0x03a8 is the only retryable transient; without direct access
-       * to the RB we trust that rc=12 from DYNFREE after a successful CLOSE
-       * on a PDS is always the in-use race.  Any other rc (4, 8, 16) is a
-       * hard error — break immediately.                                      */
-      if (attempt < DDFREE_MAX_RETRIES) {
-        continue;   /* yield and retry */
-      }
+    if (rc == 12 && attempt < DDFREE_MAX_RETRIES) {
+      /* rc=12 after a successful CLOSE on a PDS is the transient in-use
+       * race (error=0x03a8 / ERCO=0x0b); yield and retry.
+       * Any other rc is a hard error — break immediately.                */
+      continue;
     }
     break;   /* hard error or retries exhausted */
   }
