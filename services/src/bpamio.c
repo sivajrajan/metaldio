@@ -46,15 +46,10 @@ static int bpam_open(FM_BPAMHandle* handle, int mode, const DBG_Opts* opts)
 
   /*
    * DCB set to PO, BPAM INPUT|OUTPUT and POINT.
-   *
-   * dcbofuex (0x02 in dcboflgs) must NOT be set here.  When set to 1 before
-   * OPEN, it signals z/OS "the application owns the DEB lifecycle — do not
-   * free the DEB on CLOSE".  Standard CLOSE then leaves the DEB chained to
-   * the TIOT entry, so DYNFREE (called immediately after CLOSE in close_pds)
-   * always sees an active DEB and returns rc=12 / error=0x03a8 / ERCO=0x0b.
-   * Leaving dcboflgs=0 lets OPEN set it as needed and lets CLOSE free the
-   * DEB normally, so DYNFREE succeeds on the first attempt.                */
+   * dcbofuex (0x02) is required before OPEN for MODE=31 extended OPEN to
+   * succeed — z/OS uses it to enable the DCBE extension path.              */
   dcb->dcbeodad.dcbhiarc.dcbbftek.dcbbfaln = 0x84;
+  dcb->dcboflgs = dcbofuex;
 
   switch (mode) {
     case OPEN_INPUT:
@@ -947,6 +942,28 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     free(bh);
     return rc;
   }
+
+  /* Free the DCB and its associated MALLOC24 storage (DEB, block, decb,
+   * opencb) BEFORE issuing DYNFREE.
+   *
+   * DYNFREE walks the TIOT entry and checks whether any DEB is still
+   * chained to it (ERCO=0x0b = "open DCB still using this DD").  The
+   * DEB lives inside the MALLOC24 DCB storage allocated in bpam_open().
+   * CLOSE disconnects the dataset from the DCB but does not free the
+   * MALLOC24 storage — the DEB address in dcbdebad.dcbdeba remains
+   * valid until dcb_free() is called.  If DYNFREE fires while the DCB
+   * storage is still live, it sees the DEB pointer → rc=12 / ERCO=0x0b.
+   *
+   * Sequence: CLOSE (disconnects dataset) → dcb_free/FREE24 (removes
+   * the MALLOC24 DEB storage) → DYNFREE (TIOT entry now clean) → free bh. */
+  dcb_free(bh->dcb);
+  bh->dcb = NULL;
+  FREE24(bh->decb, (unsigned int)sizeof(struct decb));
+  bh->decb = NULL;
+  FREE24(bh->block, (unsigned int)bh->block_size);
+  bh->block = NULL;
+  FREE31(bh->opencb);
+  bh->opencb = NULL;
 
   debug(opts, "close_pds: issuing DYNFREE for DD='%s'\n", bh->ddname);
   rc = ddfree(&dd, opts);
