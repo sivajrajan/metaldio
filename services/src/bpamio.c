@@ -715,6 +715,38 @@ static int write_pds_member_dir_entry(struct ihadcb* PTR32 dcb, const char* memb
   if (rc == STOW_REPLACE_MEMBER_DOES_NOT_EXIST || rc == STOW_CC_OK) {
     debug(opts, "Member %s successfully replaced\n", member);
     rc = 0;
+
+    /*
+     * Clear dcbcnsto ("STOW has been issued") after a successful STOW_R on a
+     * plain PDS.
+     *
+     * Background: on a plain PDS (not PDSE) the z/OS access method sets
+     * dcb->dcbcnsto=1 when STOW is called.  On a PDSE this bit is never set
+     * because the directory is maintained internally by IGW, but on a plain
+     * PDS the bit persists inside the DCB storage after STOW returns.
+     *
+     * DYNFREE walks the TIOT entry and inspects the DCB state via the DEB
+     * chain.  The combination of a live DCB address in the DEB together with
+     * dcbcnsto=1 causes DYNFREE to classify the DD as "in use by an open DCB"
+     * (ERCO=0x0b, S99ERROR=0x03a8, rc=12), even though CLOSE has already
+     * returned rc=0 and the dataset is logically closed.
+     *
+     * Clearing dcbcnsto here — immediately after STOW succeeds and before
+     * CLOSE is issued — removes the spurious "STOW pending" indicator.  With
+     * dcbcnsto=0, CLOSE+DYNFREE sees no outstanding STOW state and proceeds
+     * cleanly, so the DD is fully released before close_pds() returns.  This
+     * unblocks any subsequent fopen()/dopen() from dmod, dsed, or dcat on the
+     * same dataset in the same shell session.
+     *
+     * Safety: dcbcnsto is a single bit in the DCB's condition-indicator byte.
+     * Clearing it after a completed STOW_R has no effect on the already-written
+     * directory entry — the member data and ISPF statistics are already on
+     * disk.  The bit is purely a signal to the access method indicating that a
+     * STOW has been requested but CLOSE has not yet processed it; clearing it
+     * here tells CLOSE that no deferred STOW work remains.
+     */
+    dcb->dcbcnsto = 0;
+    debug(opts, "write_pds_member_dir_entry: cleared dcbcnsto for PDS member %s\n", member);
   } else {
     errmsg(opts, "STOW REPLACE failed for PDS member %s with rc:%d\n", member, rc);
   }
