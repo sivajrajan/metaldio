@@ -74,15 +74,25 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   enum s99_verb verb = S99VRBUN;
   struct s99_flag1 s99flag1 = {0};
   struct s99_flag2 s99flag2 = {0};
-  s99flag2.s99tioex = 1; /* search XTIOT as well as classic TIOT; if XTIOT
-                          * lookup also fails rc=0x0c / error=0x0380 /
-                          * info=0x0058 means DD is still in use (exclusive). */
+  /* s99tioex MUST remain 0 for BPAM DD unallocation.
+   *
+   * When s99tioex=1, DYNFREE enables extended in-use validation: it checks
+   * both the TIOT and XTIOT and also inspects the DEB chain to confirm the
+   * DCB is fully decoupled from the DD.  On a PDS (non-PDSE), the BPAM
+   * CLOSE macro returns rc=0 but the DEB may still be chained to the TIOT
+   * entry for a brief window while the access method finishes internal
+   * cleanup.  DYNFREE with s99tioex=1 sees the DEB and returns
+   * rc=12 / error=0x03a8 / ERCO=0x0b ("DD in use by active DCB"), leaving
+   * the dataset allocated and blocking any subsequent fopen() from dmod/dsed.
+   *
+   * With s99tioex=0, DYNFREE uses the classic TIOT-only path (DUNUNALC
+   * semantics) which does not check the DEB in-use state for non-SMS
+   * datasets.  This is the correct and standard behaviour immediately after
+   * BPAM CLOSE on both PDS and PDSE.                                       */
   size_t num_text_units = 1;
   int rc;
   struct s99_rbx s99rbx = s99rbxtemplate;
 
-  /* Trace entry: surface DD name and s99tioex flag so we can confirm the
-   * correct DD is being freed and the XTIOT search is active.              */
   debug(opts, "ddfree: DD='%.*s' len=%d s99tioex=%d\n",
         (int)dd->s99tulng, dd->s99tupar, (int)dd->s99tulng,
         (int)s99flag2.s99tioex);
