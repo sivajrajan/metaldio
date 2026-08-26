@@ -45,10 +45,16 @@ static int bpam_open(FM_BPAMHandle* handle, int mode, const DBG_Opts* opts)
   }
 
   /*
-   * DCB set to PO, BPAM INPUT|OUTPUT and POINT
-   */
+   * DCB set to PO, BPAM INPUT|OUTPUT and POINT.
+   *
+   * dcbofuex (0x02 in dcboflgs) must NOT be set here.  When set to 1 before
+   * OPEN, it signals z/OS "the application owns the DEB lifecycle — do not
+   * free the DEB on CLOSE".  Standard CLOSE then leaves the DEB chained to
+   * the TIOT entry, so DYNFREE (called immediately after CLOSE in close_pds)
+   * always sees an active DEB and returns rc=12 / error=0x03a8 / ERCO=0x0b.
+   * Leaving dcboflgs=0 lets OPEN set it as needed and lets CLOSE free the
+   * DEB normally, so DYNFREE succeeds on the first attempt.                */
   dcb->dcbeodad.dcbhiarc.dcbbftek.dcbbfaln = 0x84;
-  dcb->dcboflgs = dcbofuex;
 
   switch (mode) {
     case OPEN_INPUT:
@@ -942,49 +948,11 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     return rc;
   }
 
-  /* DYNFREE retry loop.
-   *
-   * On a plain PDS, BPAM OPEN OUTPUT acquires a SYSDSN ENQ (exclusive) for
-   * the dataset.  The CLOSE macro releases that ENQ, but z/OS completes the
-   * internal cleanup (unhooking the DEB and clearing the TIOT in-use flag)
-   * asynchronously on a brief dispatch boundary after CLOSE returns rc=0.
-   * If DYNFREE fires immediately, it may see the TIOT entry still marked
-   * in-use and return rc=12 / error=0x03a8 / ERCO=0x0b.
-   *
-   * Fix: retry DYNFREE up to DDFREE_MAX_RETRIES times.  Each retry calls
-   * sleep(0) which forces a z/OS CPU dispatch yield (zero wall-clock delay)
-   * and allows the access-method completion to run before the next attempt.
-   * sleep() is available from <unistd.h> already included — no extra headers
-   * or feature-test macros are needed.
-   * error=0x03a8 (rc=12) is the only transient condition worth retrying;
-   * any other error is permanent and returned immediately.                   */
-  #define DDFREE_MAX_RETRIES  3
-
   debug(opts, "close_pds: issuing DYNFREE for DD='%s'\n", bh->ddname);
-  int attempt;
-  for (attempt = 0; attempt <= DDFREE_MAX_RETRIES; ++attempt) {
-    if (attempt > 0) {
-      sleep(0);   /* yield one dispatch quantum; no wall-clock delay */
-      debug(opts, "close_pds: DYNFREE retry %d for DD='%s'\n",
-            attempt, bh->ddname);
-    }
-    rc = ddfree(&dd, opts);
-    if (rc == 0) {
-      break;   /* success */
-    }
-    if (rc == 12 && attempt < DDFREE_MAX_RETRIES) {
-      /* rc=12 after a successful CLOSE on a PDS is the transient in-use
-       * race (error=0x03a8 / ERCO=0x0b); yield and retry.
-       * Any other rc is a hard error — break immediately.                */
-      continue;
-    }
-    break;   /* hard error or retries exhausted */
-  }
-
+  rc = ddfree(&dd, opts);
   if (rc) {
-    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d after %d attempt(s)"
-           " - dataset may remain allocated\n",
-           bh->ddname, rc, attempt + 1);
+    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
+           bh->ddname, rc);
   }
 
   free(bh);
