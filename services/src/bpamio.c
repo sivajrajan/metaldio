@@ -882,11 +882,8 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  /* DISP=SHR: read probes don't write, and SHR lets multiple readers co-exist. */
   int rc = alloc_pds(dataset, bh, DALSTATS_SHR, opts);
   if (rc == IOSVC_ERR_SVC99_BORROWED_DD) {
-    /* Dataset not in catalog or already allocated by another holder;
-     * we got a borrowed DD we don't own — skip open to avoid DYNFREE rc=12. */
     free(bh);
     return NULL;
   }
@@ -895,9 +892,12 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
   }
   if (rc) {
     return NULL;
-  } else {
-    return bh;
   }
+  /* TYPE=I: atomically free the DD inside CLOSE so no separate DYNFREE
+   * is needed.  DYNFREE after BPAM CLOSE TYPE=T fails with ERCO=0x0b
+   * (DEB still registered in TIOT) on both PDS and PDSE.               */
+  bh->close_type_i = 1;
+  return bh;
 }
 
 FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
