@@ -15,6 +15,7 @@
     unsigned int pdsstart_ttr;
     int memstart_ttr_known:1;
     int pdsstart_ttr_known:1;
+    int close_type_i:1;  /* 1 = CLOSE TYPE=I was used; DD freed by CLOSE, skip DYNFREE */
     size_t line_num;
   };
 

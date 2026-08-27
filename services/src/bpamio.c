@@ -906,54 +906,59 @@ FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  /* DISP=OLD: exclusive write allocation so CLOSE fully tears down the DEB
-   * chain in the TIOT, allowing DYNFREE to succeed with rc=0 on plain PDS. */
-  int rc = alloc_pds(dataset, bh, DALSTATS_OLD, opts);
+  int rc = alloc_pds(dataset, bh, DALSTATS_SHR, opts);
   if (!rc) {
     rc = bpam_open_write(bh, opts);
   }
   if (rc) {
     return NULL;
-  } else {
-    return bh;
   }
+  /* Mark this handle for CLOSE TYPE=I so close_pds() frees the DD
+   * atomically inside SVC 20 rather than via a separate DYNFREE call.
+   * On a plain PDS BPAM OUTPUT, CLOSE TYPE=T leaves the DEB registered
+   * in the TIOT; a subsequent DYNFREE then fails with ERCO=0x0b.
+   * CLOSE TYPE=I removes the TIOT entry before returning, so no
+   * DYNFREE is needed and the DD is guaranteed released.               */
+  bh->close_type_i = 1;
+  return bh;
 }
 
 int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
-  const struct closecb closecb_template = { 1, 0, 0 };
   struct closecb* PTR32 closecb;
   int rc;
+
+  /* TYPE=I (0x40): close DCB and free DD atomically inside SVC 20.
+   * TYPE=T (0x00): close DCB only; caller is responsible for DYNFREE.  */
+  int close_opts = bh->close_type_i ? CLOSE_TYPE_I : CLOSE_TYPE_T;
 
   struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, 0 };
   int ddname_len = strlen(bh->ddname);
   dd.s99tulng = ddname_len;
   memcpy(dd.s99tupar, bh->ddname, ddname_len);
 
-  /* Trace the handle state at close time: surfaces the DD name, whether the
-   * dataset is a PDSE (dcbdsgpo), block size, and RECFM byte so we can
-   * confirm the DCB is in the expected state before CLOSE is issued.        */
-  debug(opts, "close_pds: DD='%s' ddname_len=%d dcbdsgpo=%d blksi=%d recfm=0x%02x\n",
+  debug(opts, "close_pds: DD='%s' ddname_len=%d dcbdsgpo=%d blksi=%d recfm=0x%02x close_opts=0x%02x\n",
         bh->ddname, ddname_len,
         (int)bh->dcb->dcbdsgpo,
         (int)bh->dcb->dcbblksi,
-        (unsigned int)bh->dcb->dcbexlst.dcbrecfm);
+        (unsigned int)bh->dcb->dcbexlst.dcbrecfm,
+        close_opts);
 
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
-    /* DYNFREE and free bh so neither the DD allocation nor the heap
-     * struct is orphaned when closecb storage is unavailable.         */
-    ddfree(&dd, opts);
+    if (!bh->close_type_i) {
+      ddfree(&dd, opts);
+    }
     free(bh);
     return 4;
   }
-  *closecb = closecb_template;
-  closecb->dcb24 = bh->dcb;
+  closecb->last_entry = 1;
+  closecb->opts       = close_opts;
+  closecb->reserved   = 0;
+  closecb->dcb24      = bh->dcb;
 
   rc = CLOSE(closecb);
-  /* closecb is not referenced after CLOSE returns; free it now on
-   * every path to recover the MALLOC31 (below-the-bar) storage.      */
   FREE31(closecb);
   closecb = NULL;
 
@@ -961,16 +966,13 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
 
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
-    /* Still attempt DYNFREE and free the handle so we leave no leaks.
-     * ddfree() failure here is secondary; preserve the CLOSE rc.     */
-    ddfree(&dd, opts);
+    if (!bh->close_type_i) {
+      ddfree(&dd, opts);
+    }
     free(bh);
     return rc;
   }
 
-  /* Free the DCB and its associated MALLOC24 storage before DYNFREE.
-   * CLOSE has already disconnected all I/O; releasing this storage first
-   * ensures no stale pointers remain if DYNFREE inspects the DCB area.    */
   dcb_free(bh->dcb);
   bh->dcb = NULL;
   FREE24(bh->decb, (unsigned int)sizeof(struct decb));
@@ -980,15 +982,19 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   FREE31(bh->opencb);
   bh->opencb = NULL;
 
-  debug(opts, "close_pds: issuing DYNFREE for DD='%s'\n", bh->ddname);
-  rc = ddfree(&dd, opts);
-  if (rc) {
-    errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
-           bh->ddname, rc);
+  if (bh->close_type_i) {
+    /* TYPE=I already freed the DD inside CLOSE; no DYNFREE needed. */
+    debug(opts, "close_pds: TYPE=I CLOSE freed DD='%s' atomically\n", bh->ddname);
+  } else {
+    debug(opts, "close_pds: issuing DYNFREE for DD='%s'\n", bh->ddname);
+    rc = ddfree(&dd, opts);
+    if (rc) {
+      errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
+             bh->ddname, rc);
+    }
   }
 
   free(bh);
-
   return rc;
 }
 
