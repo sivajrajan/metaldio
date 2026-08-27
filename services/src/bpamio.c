@@ -715,38 +715,6 @@ static int write_pds_member_dir_entry(struct ihadcb* PTR32 dcb, const char* memb
   if (rc == STOW_REPLACE_MEMBER_DOES_NOT_EXIST || rc == STOW_CC_OK) {
     debug(opts, "Member %s successfully replaced\n", member);
     rc = 0;
-
-    /*
-     * Clear dcbcnsto ("STOW has been issued") after a successful STOW_R on a
-     * plain PDS.
-     *
-     * Background: on a plain PDS (not PDSE) the z/OS access method sets
-     * dcb->dcbcnsto=1 when STOW is called.  On a PDSE this bit is never set
-     * because the directory is maintained internally by IGW, but on a plain
-     * PDS the bit persists inside the DCB storage after STOW returns.
-     *
-     * DYNFREE walks the TIOT entry and inspects the DCB state via the DEB
-     * chain.  The combination of a live DCB address in the DEB together with
-     * dcbcnsto=1 causes DYNFREE to classify the DD as "in use by an open DCB"
-     * (ERCO=0x0b, S99ERROR=0x03a8, rc=12), even though CLOSE has already
-     * returned rc=0 and the dataset is logically closed.
-     *
-     * Clearing dcbcnsto here — immediately after STOW succeeds and before
-     * CLOSE is issued — removes the spurious "STOW pending" indicator.  With
-     * dcbcnsto=0, CLOSE+DYNFREE sees no outstanding STOW state and proceeds
-     * cleanly, so the DD is fully released before close_pds() returns.  This
-     * unblocks any subsequent fopen()/dopen() from dmod, dsed, or dcat on the
-     * same dataset in the same shell session.
-     *
-     * Safety: dcbcnsto is a single bit in the DCB's condition-indicator byte.
-     * Clearing it after a completed STOW_R has no effect on the already-written
-     * directory entry — the member data and ISPF statistics are already on
-     * disk.  The bit is purely a signal to the access method indicating that a
-     * STOW has been requested but CLOSE has not yet processed it; clearing it
-     * here tells CLOSE that no deferred STOW work remains.
-     */
-    dcb->dcbcnsto = 0;
-    debug(opts, "write_pds_member_dir_entry: cleared dcbcnsto for PDS member %s\n", member);
   } else {
     errmsg(opts, "STOW REPLACE failed for PDS member %s with rc:%d\n", member, rc);
   }
@@ -842,8 +810,29 @@ int write_member_dir_entry(const struct mstat* mstat, FM_BPAMHandle* bh, const D
  * returns, so subsequent opens by dmod/dsed always succeed.
  *
  * DD name generation: same pid-seeded "DD%06d" pattern as libdio/ddopen()
- * so names are unique per process invocation and fit in 8 characters.      */
-static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opts)
+ * so names are unique per process invocation and fit in 8 characters.
+ *
+ * DISP STRATEGY — why write uses DISP=OLD and read uses DISP=SHR:
+ *
+ * When a PDS is BPAM-opened for OUTPUT under DISP=SHR, z/OS records the
+ * allocation as shared in the TIOT.  On CLOSE of a SHR BPAM OUTPUT DCB for
+ * a plain PDS (not PDSE), z/OS does NOT remove the DEB from the TIOT's
+ * internal DEB chain — SHR semantics imply the DD may remain usable by
+ * other openers after close, so the DEB is left registered.  DYNFREE then
+ * walks the TIOT, finds a non-NULL DEB pointer, and returns
+ * rc=12 / S99ERROR=0x03a8 / ERCO=0x0b ("DD allocated with open DCBs").
+ * The DD is left allocated, blocking subsequent fopen() from dmod/dsed.
+ *
+ * DISP=OLD (DALSTATS_OLD) for write allocations causes z/OS to fully tear
+ * down the DEB chain during CLOSE, because OLD semantics are exclusive —
+ * no other task can share the DD, so there is no reason to leave the DEB
+ * registered after close.  DYNFREE then sees a clean TIOT entry → rc=0.
+ *
+ * Read allocations correctly keep DISP=SHR: they never STOW, never write,
+ * and releasing the DEB on CLOSE is not required because the read DCB is
+ * closed and freed before any subsequent write open is attempted.           */
+static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, int disp,
+                     const DBG_Opts* opts)
 {
   /* Generate a unique, explicit DD name — placed in the classic TIOT so
    * that the subsequent ddfree() (DUNDDNAM) is synchronous after CLOSE.   */
@@ -855,10 +844,11 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
   /* Build text units:
    *   dsn  — DALDSNAM (0x02): dataset name
    *   dd   — DALDDNAM (0x01): our explicit DD name (not DALRTDDN/0x55)
-   *   stats— DALSTATS (0x04): DISP=SHR                                    */
+   *   stats— DALSTATS (0x04): DISP passed by caller                       */
   struct s99_common_text_unit dsn   = { DALDSNAM, 1, 0, 0 };
   struct s99_common_text_unit dd    = { DALDDNAM, 1, 0, 0 };
-  struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
+  struct s99_common_text_unit stats = { DALSTATS, 1, 1, { 0 } };
+  stats.s99tupar[0] = (char)disp;
 
   /* Fill dsn text unit */
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
@@ -892,7 +882,8 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  int rc = alloc_pds(dataset, bh, opts);
+  /* DISP=SHR: read probes don't write, and SHR lets multiple readers co-exist. */
+  int rc = alloc_pds(dataset, bh, DALSTATS_SHR, opts);
   if (rc == IOSVC_ERR_SVC99_BORROWED_DD) {
     /* Dataset not in catalog or already allocated by another holder;
      * we got a borrowed DD we don't own — skip open to avoid DYNFREE rc=12. */
@@ -915,7 +906,9 @@ FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  int rc = alloc_pds(dataset, bh, opts);
+  /* DISP=OLD: exclusive write allocation so CLOSE fully tears down the DEB
+   * chain in the TIOT, allowing DYNFREE to succeed with rc=0 on plain PDS. */
+  int rc = alloc_pds(dataset, bh, DALSTATS_OLD, opts);
   if (!rc) {
     rc = bpam_open_write(bh, opts);
   }
@@ -975,45 +968,9 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     return rc;
   }
 
-  /* Zero the DEB pointer in the DCB before freeing any storage and before
-   * issuing DYNFREE.
-   *
-   * How DYNFREE detects "DD in use" (ERCO=0x0b / S99ERROR=0x03a8):
-   *
-   *   DYNFREE locates the TIOT entry for our DD name, then follows the
-   *   internal TIOT→DEB chain.  The DEB was registered with the TIOT by
-   *   OPEN; on a plain PDS, CLOSE returns rc=0 but does NOT deregister the
-   *   DEB from the TIOT chain — it leaves the DEB address in dcbdebad.dcbdeba
-   *   non-zero inside our MALLOC24 DCB storage.  When DYNFREE subsequently
-   *   walks the chain and finds a non-NULL DEB pointer it concludes the DD is
-   *   still open and returns rc=12 / ERCO=0x0b, regardless of whether we have
-   *   freed the DCB storage or cleared dcbcnsto.
-   *
-   *   (On a PDSE this never happens because IGW manages directory I/O
-   *   internally and CLOSE fully deregisters the DEB before returning.)
-   *
-   * Fix: zero dcbdebad.dcbdeba while the DCB storage is still live (so we
-   * write through a valid pointer), immediately after CLOSE returns and before
-   * dcb_free() / DYNFREE.  With a zero DEB address DYNFREE sees no active DCB
-   * on the DD and proceeds cleanly.
-   *
-   * dcbcnsto is also cleared here for completeness — on a plain PDS CLOSE
-   * leaves it set to 1 ("STOW has been issued"), which some z/OS levels also
-   * inspect during DYNFREE validation.
-   *
-   * Sequence:
-   *   CLOSE  (returns rc=0; DEB still registered in TIOT on plain PDS)
-   *   → zero dcbdebad.dcbdeba  (removes DEB from chain DYNFREE will walk)
-   *   → zero dcbcnsto          (removes "STOW pending" flag for good measure)
-   *   → dcb_free / FREE24      (release MALLOC24 storage — safe now)
-   *   → DYNFREE                (TIOT entry is clean → rc=0)
-   *   → free(bh)
-   */
-  debug(opts, "close_pds: zeroing DEB pointer (dcbdeba=0x%06x) before DYNFREE\n",
-        (unsigned int)bh->dcb->dcbdebad.dcbdeba);
-  bh->dcb->dcbdebad.dcbdeba = 0;   /* detach DEB from TIOT chain DYNFREE walks */
-  bh->dcb->dcbcnsto          = 0;   /* clear "STOW issued" flag (defence-in-depth) */
-
+  /* Free the DCB and its associated MALLOC24 storage before DYNFREE.
+   * CLOSE has already disconnected all I/O; releasing this storage first
+   * ensures no stale pointers remain if DYNFREE inspects the DCB area.    */
   dcb_free(bh->dcb);
   bh->dcb = NULL;
   FREE24(bh->decb, (unsigned int)sizeof(struct decb));
