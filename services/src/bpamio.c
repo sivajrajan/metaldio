@@ -837,7 +837,6 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, int disp,
   /* Generate a unique, explicit DD name — placed in the classic TIOT so
    * that the subsequent ddfree() (DUNDDNAM) is synchronous after CLOSE.   */
   char ddname[DD_MAX + 1];
-  srand((unsigned int)getpid());
   snprintf(ddname, sizeof(ddname), "DD%06d", rand() % 1000000);
   ddname[DD_MAX] = '\0';
 
@@ -906,19 +905,13 @@ FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  int rc = alloc_pds(dataset, bh, DALSTATS_SHR, opts);
+  int rc = alloc_pds(dataset, bh, DALSTATS_OLD, opts);
   if (!rc) {
     rc = bpam_open_write(bh, opts);
   }
   if (rc) {
     return NULL;
   }
-  /* Mark this handle for CLOSE TYPE=I so close_pds() frees the DD
-   * atomically inside SVC 20 rather than via a separate DYNFREE call.
-   * On a plain PDS BPAM OUTPUT, CLOSE TYPE=T leaves the DEB registered
-   * in the TIOT; a subsequent DYNFREE then fails with ERCO=0x0b.
-   * CLOSE TYPE=I removes the TIOT entry before returning, so no
-   * DYNFREE is needed and the DD is guaranteed released.               */
   bh->close_type_i = 1;
   return bh;
 }
