@@ -75,10 +75,28 @@ static int bpam_open(FM_BPAMHandle* handle, int mode, const DBG_Opts* opts)
   rc = OPEN(opencb);
   if (rc) {
     errmsg(opts, "Unable to perform OPEN. rc:%d\n", rc);
+    FREE31(opencb);
+    dcb_free(dcb);
     return rc;
   }
 
   if (!dcb->dcbdsgpo) {
+    /* Plain PDS (not PDSE): OPEN succeeded so the DCB is active.
+     * Issue CLOSE TYPE=I to atomically close the DCB and release the DD
+     * in one SVC 20 call.  This avoids the ERCO=0x0b "DD has open DCBs"
+     * that DYNFREE returns when called after CLOSE TYPE=T on a plain PDS,
+     * and prevents the DD from leaking into the caller's TIOT.            */
+    struct closecb* PTR32 closecb_plain = MALLOC31(sizeof(struct closecb));
+    if (closecb_plain) {
+      closecb_plain->last_entry = 1;
+      closecb_plain->opts       = CLOSE_TYPE_I;
+      closecb_plain->reserved   = 0;
+      closecb_plain->dcb24      = dcb;
+      CLOSE(closecb_plain);
+      FREE31(closecb_plain);
+    }
+    dcb_free(dcb);
+    FREE31(opencb);
     errmsg(opts, "Dataset is not a PDSE.\n");
     return 4;
   }
@@ -890,6 +908,10 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
     rc = bpam_open_read(bh, opts);
   }
   if (rc) {
+    /* bpam_open_read failed.  bpam_open() already issued CLOSE TYPE=I for
+     * the plain-PDS case, atomically closing the DCB and releasing the DD.
+     * For other failures where alloc_pds never succeeded, no DD to free.  */
+    free(bh);
     return NULL;
   }
   /* TYPE=I: atomically free the DD inside CLOSE so no separate DYNFREE
@@ -910,6 +932,9 @@ FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
     rc = bpam_open_write(bh, opts);
   }
   if (rc) {
+    /* bpam_open_write failed.  bpam_open() issued CLOSE TYPE=I for the
+     * plain-PDS case, atomically closing the DCB and releasing the DD.    */
+    free(bh);
     return NULL;
   }
   bh->close_type_i = 1;
