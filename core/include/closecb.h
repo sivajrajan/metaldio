@@ -13,4 +13,7 @@ struct closecb {
 
 #pragma pack(pop)
 
+#define CLOSE_TYPE_T  0x00
+#define CLOSE_TYPE_I  0x40
+
 #endif

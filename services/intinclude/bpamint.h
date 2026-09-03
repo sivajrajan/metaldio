@@ -15,6 +15,7 @@
     unsigned int pdsstart_ttr;
     int memstart_ttr_known:1;
     int pdsstart_ttr_known:1;
+    int close_type_i:1;
     size_t line_num;
   };
 

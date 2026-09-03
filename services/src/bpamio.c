@@ -787,12 +787,11 @@ int write_member_dir_entry(const struct mstat* mstat, FM_BPAMHandle* bh, const D
   return rc;
 }
 
-static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, int disp, const DBG_Opts* opts)
+static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
   struct s99_common_text_unit dsn = { DALDSNAM, 1, 0, 0 };
   struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
-  struct s99_common_text_unit stats = { DALSTATS, 1, 1, { 0 } };
-  stats.s99tupar[0] = (char)disp;
+  struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
 
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
   if (rc) {
@@ -809,7 +808,7 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, int disp, const DBG
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
 
-  debug(opts, "Allocated DD:%s to %s (disp=0x%02x)\n", bh->ddname, dataset, disp);
+  debug(opts, "Allocated DD:%s to %s\n", bh->ddname, dataset);
 
   return 0;
 }
@@ -820,16 +819,16 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  int rc = alloc_pds(dataset, bh, DALSTATS_SHR, opts);
+  int rc = alloc_pds(dataset, bh, opts);
   if (!rc) {
     rc = bpam_open_read(bh, opts);
   }
   if (rc) {
     free(bh);
     return NULL;
-  } else {
-    return bh;
   }
+  bh->close_type_i = 1;
+  return bh;
 }
 
 FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
@@ -838,23 +837,24 @@ FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  int rc = alloc_pds(dataset, bh, DALSTATS_OLD, opts);
+  int rc = alloc_pds(dataset, bh, opts);
   if (!rc) {
     rc = bpam_open_write(bh, opts);
   }
   if (rc) {
     free(bh);
     return NULL;
-  } else {
-    return bh;
   }
+  bh->close_type_i = 1;
+  return bh;
 }
 
 int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
-  const struct closecb closecb_template = { 1, 0, 0 };
   struct closecb* PTR32 closecb;
   int rc;
+
+  int close_opts = bh->close_type_i ? CLOSE_TYPE_I : CLOSE_TYPE_T;
 
   struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, 0 };
   int ddname_len = strlen(bh->ddname);
@@ -864,19 +864,38 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
+    if (!bh->close_type_i) {
+      ddfree(&dd);
+    }
+    free(bh);
     return 4;
   }
-  *closecb = closecb_template;
-  closecb->dcb24 = bh->dcb;
+  closecb->last_entry = 1;
+  closecb->opts       = close_opts;
+  closecb->reserved   = 0;
+  closecb->dcb24      = bh->dcb;
 
   rc = CLOSE(closecb);
+  FREE31(closecb);
+  closecb = NULL;
+
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
+    if (!bh->close_type_i) {
+      ddfree(&dd);
+    }
+    free(bh);
     return rc;
   }
 
-  rc = ddfree(&dd);
-  debug(opts, "Free DD:%s\n", bh->ddname);
+  if (bh->close_type_i) {
+    /* TYPE=I (0x40) atomically closed the DCB and unallocated the DD inside CLOSE */
+    debug(opts, "close_pds: TYPE=I CLOSE freed DD:%s atomically\n", bh->ddname);
+    rc = 0;
+  } else {
+    rc = ddfree(&dd);
+    debug(opts, "Free DD:%s\n", bh->ddname);
+  }
 
   free(bh);
 
