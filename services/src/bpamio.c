@@ -797,10 +797,19 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
   if (rc) {
     return rc;
   }
+  debug(opts, "alloc_pds: [BEFORE dsdd_alloc] dd key=0x%04x tulng=%u tupar='%.*s'\n",
+        (unsigned int)dd.s99tukey, (unsigned int)dd.s99tulng,
+        (int)dd.s99tulng, dd.s99tupar);
+
   rc = dsdd_alloc(&dsn, &dd, &stats, opts);
   if (rc) {
+    debug(opts, "alloc_pds: dsdd_alloc failed rc=%d\n", rc);
     return rc;
   }
+
+  debug(opts, "alloc_pds: [AFTER dsdd_alloc] dd key=0x%04x tulng=%u tupar='%.*s'\n",
+        (unsigned int)dd.s99tukey, (unsigned int)dd.s99tulng,
+        (int)dd.s99tulng, dd.s99tupar);
 
   /*
    * Copy system generated DD name into passed in handle
@@ -808,6 +817,8 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
 
+  debug(opts, "alloc_pds: bh->ddname set to '%s' (assigned null-terminator at index dd.s99tulng=%u)\n",
+        bh->ddname, (unsigned int)dd.s99tulng);
   debug(opts, "Allocated DD:%s to %s\n", bh->ddname, dataset);
 
   return 0;
