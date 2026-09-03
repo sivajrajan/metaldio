@@ -787,50 +787,29 @@ int write_member_dir_entry(const struct mstat* mstat, FM_BPAMHandle* bh, const D
   return rc;
 }
 
-static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opts)
+static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, int disp, const DBG_Opts* opts)
 {
-  static int dd_seeded = 0;
-  static unsigned int dd_counter = 0;
-  if (!dd_seeded) {
-    dd_counter = ((unsigned int)getpid() ^ (unsigned int)time(NULL)) % 1000000;
-    dd_seeded = 1;
-  }
-  dd_counter = (dd_counter + 1) % 1000000;
-  char ddname[DD_MAX + 1];
-  snprintf(ddname, sizeof(ddname), "DD%06u", dd_counter);
-  ddname[DD_MAX] = '\0';
-
-  struct s99_common_text_unit dsn   = { DALDSNAM, 1, 0, 0 };
-  struct s99_common_text_unit dd    = { DALDDNAM, 1, 0, 0 };
-  struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
+  struct s99_common_text_unit dsn = { DALDSNAM, 1, 0, 0 };
+  struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
+  struct s99_common_text_unit stats = { DALSTATS, 1, 1, { 0 } };
+  stats.s99tupar[0] = (char)disp;
 
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
   if (rc) {
     return rc;
   }
-
-  size_t ddname_len = strlen(ddname);
-  dd.s99tulng = (unsigned short)ddname_len;
-  memcpy(dd.s99tupar, ddname, ddname_len);
-
-  debug(opts, "alloc_pds: [BEFORE dsdd_alloc] explicit dd key=0x%04x (DALDDNAM) tulng=%u ddname='%s'\n",
-        (unsigned int)dd.s99tukey, (unsigned int)dd.s99tulng, ddname);
-
   rc = dsdd_alloc(&dsn, &dd, &stats, opts);
   if (rc) {
-    debug(opts, "alloc_pds: dsdd_alloc failed rc=%d\n", rc);
     return rc;
   }
 
   /*
-   * Copy explicit DD name into passed in handle
+   * Copy system generated DD name into passed in handle
    */
-  memcpy(bh->ddname, ddname, ddname_len);
-  bh->ddname[ddname_len] = '\0';
+  memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
+  bh->ddname[dd.s99tulng] = '\0';
 
-  debug(opts, "alloc_pds: [AFTER dsdd_alloc] bh->ddname set to '%s' (len=%u)\n",
-        bh->ddname, (unsigned int)ddname_len);
-  debug(opts, "Allocated DD:%s to %s\n", bh->ddname, dataset);
+  debug(opts, "Allocated DD:%s to %s (disp=0x%02x)\n", bh->ddname, dataset, disp);
 
   return 0;
 }
@@ -841,11 +820,12 @@ FM_BPAMHandle* open_pds_for_read(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  int rc = alloc_pds(dataset, bh, opts);
+  int rc = alloc_pds(dataset, bh, DALSTATS_SHR, opts);
   if (!rc) {
     rc = bpam_open_read(bh, opts);
   }
   if (rc) {
+    free(bh);
     return NULL;
   } else {
     return bh;
@@ -858,11 +838,12 @@ FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
   if (!bh) {
     return bh;
   }
-  int rc = alloc_pds(dataset, bh, opts);
+  int rc = alloc_pds(dataset, bh, DALSTATS_OLD, opts);
   if (!rc) {
     rc = bpam_open_write(bh, opts);
   }
   if (rc) {
+    free(bh);
     return NULL;
   } else {
     return bh;
