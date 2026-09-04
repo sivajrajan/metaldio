@@ -35,13 +35,11 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
     s99_fmt_dmp(opts, parms);
 #endif
     s99_prt_msg(opts, parms, rc);
+    s99_free(parms);
     return IOSVC_ERR_SVC99_ALLOC_FAILURE;
   }
 
-  struct s99_common_text_unit* ddout = (struct s99_common_text_unit*) parms->s99txtpp[1];
-  dd->s99tulng = ddout->s99tulng;
-  memcpy(dd->s99tupar, ddout->s99tupar, dd->s99tulng);
-
+  /* DALDDNAM: caller's dd already has the correct name — no readback needed */
   s99_free(parms);
   return IOSVC_ERR_NOERROR;
 }

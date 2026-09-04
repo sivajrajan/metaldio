@@ -790,12 +790,20 @@ int write_member_dir_entry(const struct mstat* mstat, FM_BPAMHandle* bh, const D
 static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
   struct s99_common_text_unit dsn = { DALDSNAM, 1, 0, 0 };
-  struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
   struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
 
-  /* PSATOLD (PSA+0x21C = 540) holds the current TCB address */
-  void *tcb_ptr = *((void * __ptr32 * __ptr32)540);
-  errmsg(opts, "DIAGNOSTIC TCB alloc_pds: %p\n", tcb_ptr);
+  /* DALDDNAM with explicit name — avoids XTIOT placement that causes DYNFREE 0x03A8 */
+  static unsigned int bpam_dd_seq = 0;
+  unsigned int seq = ++bpam_dd_seq % 1000000U;
+  char ddname[9];
+  snprintf(ddname, sizeof(ddname), "BP%06u", seq);
+
+  struct s99_common_text_unit dd;
+  memset(&dd, 0, sizeof(dd));
+  dd.s99tukey = DALDDNAM;
+  dd.s99tunum = 1;
+  dd.s99tulng = (unsigned short)strlen(ddname);
+  memcpy(dd.s99tupar, ddname, dd.s99tulng);
 
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
   if (rc) {
@@ -806,9 +814,6 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
     return rc;
   }
 
-  /*
-   * Copy system generated DD name into passed in handle
-   */
   memcpy(bh->ddname, dd.s99tupar, dd.s99tulng);
   bh->ddname[dd.s99tulng] = '\0';
 
