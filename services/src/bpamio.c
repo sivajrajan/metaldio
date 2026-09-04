@@ -849,8 +849,6 @@ FM_BPAMHandle* open_pds_for_write(const char* dataset, const DBG_Opts* opts)
 
 int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
 {
-  const struct closecb closecb_template = { 1, 0, 0 };
-  struct closecb* PTR32 closecb;
   int rc;
 
   struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, 0 };
@@ -858,15 +856,11 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   dd.s99tulng = ddname_len;
   memcpy(dd.s99tupar, bh->ddname, ddname_len);
 
-  closecb = MALLOC31(sizeof(struct closecb));
-  if (!closecb) {
-    errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
-    return 4;
-  }
-  *closecb = closecb_template;
-  closecb->dcb24 = bh->dcb;
+  /* CLOSE reuses the opencb: mode byte (INPUT/OUTPUT) must match OPEN
+   * or z/OS leaves DCBOPEN set and ddfree() fails with error:0x03A8. */
+  bh->opencb->last_entry = 1;
 
-  rc = CLOSE(closecb);
+  rc = CLOSE((struct closecb* PTR32) bh->opencb);
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
     /* Still attempt DYNFREE and free the handle so we leave no leaks.
