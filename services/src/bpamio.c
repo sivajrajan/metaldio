@@ -793,8 +793,8 @@ static int alloc_pds(const char* dataset, FM_BPAMHandle* bh, const DBG_Opts* opt
   struct s99_common_text_unit dd = { DALRTDDN, 1, sizeof(DD_SYSTEM)-1, DD_SYSTEM };
   struct s99_common_text_unit stats = { DALSTATS, 1, 1, { DALSTATS_SHR } };
 
-  void *tcb_ptr;
-  __asm__("L %0,540(0)" : "=r"(tcb_ptr));
+  /* PSATOLD (PSA+0x21C = 540) holds the current TCB address */
+  void *tcb_ptr = *((void * __ptr32 * __ptr32)540);
   errmsg(opts, "DIAGNOSTIC TCB alloc_pds: %p\n", tcb_ptr);
 
   int rc = init_dsnam_text_unit(dataset, &dsn, opts);
@@ -857,8 +857,8 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   struct closecb* PTR32 closecb;
   int rc;
 
-  void *tcb_ptr;
-  __asm__("L %0,540(0)" : "=r"(tcb_ptr));
+  /* PSATOLD (PSA+0x21C = 540) holds the current TCB address */
+  void *tcb_ptr = *((void * __ptr32 * __ptr32)540);
   errmsg(opts, "DIAGNOSTIC TCB close_pds: %p\n", tcb_ptr);
 
   struct s99_common_text_unit dd = { DUNDDNAM, 1, 0, 0 };
