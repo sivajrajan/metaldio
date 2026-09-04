@@ -876,7 +876,9 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     return rc;
   }
 
-  debug(opts, "Free DD:%s\n", bh->ddname);
+  debug(opts, "Free DD:%s dd.key=0x%04X dd.num=%u dd.len=%u dd.par='%.*s'\n",
+        bh->ddname, dd.s99tukey, dd.s99tunum, dd.s99tulng,
+        (int)dd.s99tulng, dd.s99tupar);
   rc = ddfree(&dd, opts);
   if (rc) {
     errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
