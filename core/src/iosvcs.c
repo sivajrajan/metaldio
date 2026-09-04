@@ -65,16 +65,30 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   int rc;
   struct s99_rbx s99rbx = s99rbxtemplate;
 
+  errmsg(opts, "ddfree: key=0x%04X num=%u lng=%u par='%.*s'\n",
+         dd->s99tukey, dd->s99tunum, dd->s99tulng,
+         (int)dd->s99tulng, dd->s99tupar);
+
   parms = s99_init(verb, s99flag1, s99flag2, &s99rbx, num_text_units, dd );
   if (!parms) {
     errmsg(opts, "Unable to initialize SVC99 (DYNFREE) control blocks\n");
     return 16;
   }
+
+  errmsg(opts, "ddfree: SVC99 RB verb=%d rbln=%u txtpp=%p\n",
+         parms->s99verb, parms->s99rbln, (void*)parms->s99txtpp);
+  {
+    struct s99_common_text_unit* tu = (struct s99_common_text_unit*) parms->s99txtpp[0];
+    errmsg(opts, "ddfree: txtpp[0] key=0x%04X num=%u lng=%u par='%.*s'\n",
+           tu->s99tukey, tu->s99tunum, tu->s99tulng,
+           (int)tu->s99tulng, tu->s99tupar);
+  }
+
   rc = S99(parms);
+  errmsg(opts, "ddfree: S99 rc=%d error=0x%04X info=0x%04X\n",
+         rc, parms->s99error, parms->s99info);
   if (rc) {
-#ifdef DEBUG
     s99_fmt_dmp(opts, parms);
-#endif
     s99_prt_msg(opts, parms, rc);
     s99_free(parms);
     return rc;
