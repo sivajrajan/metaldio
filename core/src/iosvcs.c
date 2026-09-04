@@ -42,6 +42,15 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
   dd->s99tulng = ddout->s99tulng;
   memcpy(dd->s99tupar, ddout->s99tupar, dd->s99tulng);
 
+  /* Decouple the returned DD text unit from the allocation key.
+   * DALRTDDN (0x55) places the DD in the XTIOT; SVC99 UNFREE on an
+   * XTIOT entry returns error:0x03A8 after CLOSE because the XTIOT
+   * tracks the DCB reference separately.  Resetting the key to
+   * DALDDNAM (0x01) marks the text unit as a classic TIOT DDname so
+   * the caller's ddfree() builds a pristine S99VRBUN request block
+   * against the TIOT entry where DYNFREE works correctly.           */
+  dd->s99tukey = DALDDNAM;
+
   s99_free(parms);
   return IOSVC_ERR_NOERROR;
 }
