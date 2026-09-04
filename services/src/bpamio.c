@@ -879,11 +879,13 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
 
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
-
     return rc;
   }
 
   debug(opts, "Free DD:%s\n", bh->ddname);
+  debug(opts, "pre-ddfree: dd.__verb(s99tukey)=0x%04X (expect DUNDDNAM=0x%04X) S99VRBUN=0x%02X dd.s99tulng=%u dd.s99tupar='%.*s'\n",
+        dd.s99tukey, DUNDDNAM, S99VRBUN,
+        dd.s99tulng, (int)dd.s99tulng, dd.s99tupar);
   rc = ddfree(&dd, opts);
   if (rc) {
     errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
