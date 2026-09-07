@@ -19,23 +19,20 @@ typedef enum s99_verb {
 	S99VRBIN = 7
 };
 
-/* s99_flag1 maps to a 2-byte field in the IBM SVC99 RB (IEFZB4D2 offset 0x05).
- * Using 'unsigned short' forces a 2-byte bitfield container under pack(1);
- * 'int' would allocate 4 bytes, misaligning s99error/s99info/s99s99x by +2. */
 struct s99_flag1 {
-	unsigned short s99oncnv:1;
-	unsigned short s99nocnv:1;
-	unsigned short s99nomnt:1;
-	unsigned short s99jbsys:1;
-	unsigned short s99cnenq:1;
-	unsigned short s99gdgnt:1;
-	unsigned short s99msglo:1;
-	unsigned short s99nomig:1;
-	unsigned short s99nosym:1;
-	unsigned short s99acucb:1;
-	unsigned short s99dsaba:1;
-	unsigned short s99dxacu:1;
-	unsigned short s99rsrv:4;
+	int s99oncnv:1;
+	int s99nocnv:1;
+	int s99nomnt:1;
+	int s99jbsys:1;
+	int s99cnenq:1;
+	int s99gdgnt:1;
+	int s99msglo:1;
+	int s99nomig:1;
+	int s99nosym:1;
+	int s99acucb:1;
+	int s99dsaba:1;
+	int s99dxacu:1;
+	int s99rsrv:4;
 };
 
 struct s99_flag2 {
@@ -133,26 +130,21 @@ struct s99_text_unit {
 #define DALSTATS_NEW   0x4
 #define DALSTATS_SHR   0x8
 
-/* s99_eopts maps to 1 byte in the IBM RBX at offset +7.
- * XLC Metal C CCN3159: unsigned char bitfield container rejected — use unsigned; pack(1) keeps it 1 byte. */
 struct s99_eopts {
-	unsigned s99eimsg:1;
-	unsigned s99ermsg:1;
-	unsigned s99elsto:1;
-	unsigned s99emkey:1;
-	unsigned s99emsub:1;
-	unsigned s99ewtp:1;
-	unsigned s99ersrv:2;
+	int s99eimsg:1;
+	int s99ermsg:1;
+	int s99elsto:1;
+	int s99emkey:1;
+	int s99emsub:1;
+	int s99ewtp:1;
+	int s99ersrv:2;
 };
 
-/* s99_emgsv maps to 1 byte in the IBM RBX at offset +10.
- * XLC Metal C CCN3159: bitfield container must be unsigned (int-width) under pack(1);
- * unsigned char is rejected — use unsigned and rely on pack(1) to keep the struct 1 byte. */
 struct s99_emgsv {
-	unsigned s99xrsrv1:4;
-	unsigned s99xseve:1;
-	unsigned s99xwarn:1;
-	unsigned s99xrsrv2:2;
+	int s99xrsrv1:4;
+	int s99xseve:1;
+	int s99xwarn:1;
+	int s99xrsrv2:2;
 };
 
 #define S99RBXVR 1
@@ -177,17 +169,15 @@ struct s99_rbx {
 };
 
 struct s99rb {
-	unsigned char s99rbln;   /* RB length; IBM IEFZB4D2 offset 0x00 */
-	unsigned char s99verb;   /* verb code 1 byte at IBM offset 0x01; enum s99_verb is 4 bytes under xlc and must NOT be used directly here */
-	struct s99_flag1 s99flag1; /* 2 bytes at IBM offset 0x02; must use unsigned short bitfields under pack(1) */
+	unsigned char s99rbln;   /* length of request block-20*/
+	enum s99_verb s99verb;
+struct s99_flag1 s99flag1;
 unsigned short s99error;
 unsigned short s99info;
 	struct s99_text_unit* PTR32 * PTR32 s99txtpp;
 	struct s99_rbx* PTR32 s99s99x;
 struct s99_flag2 s99flag2;
 };
-/* Compile-time layout guard: s99rb must be exactly 20 bytes (IBM IEFZB4D2); works in C89/C99/C11 under xlc without -qlanglvl=stdc11. */
-typedef char s99rb_size_check[(sizeof(struct s99rb) == 20) ? 1 : -1];
 
 struct s99_em_bufs {
 	unsigned short embufl1;

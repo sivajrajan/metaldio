@@ -866,34 +866,17 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   *closecb = closecb_template;
   closecb->dcb24 = bh->dcb;
 
-  /* DIAG: capture TCB address and key DCB fields before CLOSE so we can correlate with IEAVTCB trace and verify DCB is still open (dcboflgs bit0 set means open). */
-  debug(opts, "DIAGNOSTIC TCB close_pds: %p\n", *((void* PTR32 *)0x21C)); /* PSA+0x21C = current TCB address */
-  debug(opts, "pre-CLOSE: dcboflgs=0x%02x dcbmacr1=0x%02x dcbmacr2=0x%02x closecb=%p dcb24=%p\n",
-        (unsigned char)bh->dcb->dcboflgs,
-        (unsigned char)bh->dcb->dcbmacr.dcbmacr1,
-        (unsigned char)bh->dcb->dcbmacr.dcbmacr2,
-        (void*)closecb, (void*)closecb->dcb24);
-
   rc = CLOSE(closecb);
-
-  /* DIAG: dcbtiot becomes 0xC2D7 ('BP') and dcboflgs bit0 clears after a successful CLOSE; DEB pointer going to 0xF0F0F1 is sentinel. */
-  debug(opts, "post-CLOSE: DEB=0x%X dcbtiot=0x%X\n",
-        bh->dcb->dcbdebad, (unsigned short)bh->dcb->dcbtiot);
-  debug(opts, "post-CLOSE: rc=%d dcboflgs=0x%02x\n",
-        rc, (unsigned char)bh->dcb->dcboflgs);
-
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
-    /* Still attempt DYNFREE and free the handle so we leave no leaks; ddfree() failure here is secondary. */
+    /* Still attempt DYNFREE and free the handle so we leave no leaks.
+     * ddfree() failure here is secondary; preserve the CLOSE rc. */
     ddfree(&dd, opts);
     free(bh);
     return rc;
   }
 
-  /* DIAG: confirm text unit key/value fed to ddfree match the DD allocated by alloc_pds() (DUNDDNAM=0x0001, DALRTDDN return). */
-  debug(opts, "pre-FREE31: closecb=%p\n", (void*)closecb);
   debug(opts, "Free DD:%s\n", bh->ddname);
-
   rc = ddfree(&dd, opts);
   if (rc) {
     errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
