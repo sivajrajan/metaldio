@@ -171,11 +171,10 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 	msgparms->emwtpcdp = &msgparms->emwtdert;
 	msgparms->embufp = &msgparms->embuf;
 
-#if 0
-	errmsg(opts, "SVC99 parms:%p rc:0x%x\n", svc99parms, svc99rc);
-	errmsg(opts, "SVC99 failed with error:%d (0x%x) info: %d (0x%x)\n", 
-		svc99parms->s99error, svc99parms->s99error, svc99parms->s99info, svc99parms->s99info);
-#endif
+	/* Always dump raw s99error/s99info before calling IEFDB476; these are the definitive SVC99 reason codes even if S99MSG itself fails. */
+	errmsg(opts, "SVC99 verb:0x%x rc:0x%x error:0x%04x info:0x%04x\n",
+		(unsigned int)svc99parms->s99verb, svc99rc,
+		(unsigned short)svc99parms->s99error, (unsigned short)svc99parms->s99info);
 
 	rc = S99MSG(msgparms);
 	if (rc) {

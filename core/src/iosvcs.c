@@ -13,7 +13,8 @@
 #define ERRNO_NONEXISTANT_FILE (67)
 #define DIO_MSG_BUFF_LEN (4095)
 
-static const struct s99_rbx s99rbxtemplate = {"S99RBX",S99RBXVR,{0,1,0,0,0,0,0},0,0,0};
+/* s99eopts all-zero: s99ermsg=1 demands a buffer via s99emsgp; NULL there makes IEFDB476 reject the RBX with rc=0x0C, hiding every real SVC99 error. */
+static const struct s99_rbx s99rbxtemplate = {"S99RBX",S99RBXVR,{0,0,0,0,0,0,0},0,0,0};
 
 int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd, struct s99_common_text_unit* disp, const DBG_Opts* opts)
 {
