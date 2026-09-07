@@ -858,6 +858,11 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   dd.s99tulng = ddname_len;
   memcpy(dd.s99tupar, bh->ddname, ddname_len);
 
+  /* DIAG: confirm the DD text unit built for DYNFREE matches the open DD name. */
+  debug(opts, "close_pds: dd key=0x%04x num=%d lng=%d par='%.*s'\n",
+        dd.s99tukey, (int)dd.s99tunum, (int)dd.s99tulng,
+        (int)dd.s99tulng, dd.s99tupar);
+
   closecb = MALLOC31(sizeof(struct closecb));
   if (!closecb) {
     errmsg(opts, "Unable to obtain storage for CLOSE cb\n");
@@ -866,7 +871,29 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
   *closecb = closecb_template;
   closecb->dcb24 = bh->dcb;
 
+  /* DIAG: pre-CLOSE — dcboflgs bit dcbofopn(0x10) set means DCB is open.
+   * dcbmacr1 0x20=READ, dcbmacr2 0x20=WRITE confirm the open direction.
+   * dcbtiot non-zero means the DD is still in the TIOT (dataset allocated). */
+  debug(opts, "close_pds: pre-CLOSE dd='%s' dcb=%p closecb=%p\n",
+        bh->ddname, (void*)bh->dcb, (void*)closecb);
+  debug(opts, "close_pds: pre-CLOSE dcboflgs=0x%02X(open=%d) dcbmacr1=0x%02X dcbmacr2=0x%02X dcbtiot=0x%04X\n",
+        bh->dcb->dcboflgs,
+        (bh->dcb->dcboflgs & dcbofopn) ? 1 : 0,
+        bh->dcb->dcbmacr.dcbmacr1,
+        bh->dcb->dcbmacr.dcbmacr2,
+        bh->dcb->dcbtiot);
+
   rc = CLOSE(closecb);
+
+  /* DIAG: post-CLOSE — dcboflgs bit dcbofopn should now be 0 (DCB closed).
+   * dcbtiot=0 means CLOSE also released the TIOT entry (DD freed by CLOSE itself).
+   * If dcbtiot is still non-zero the DD is still in TIOT — DYNFREE must free it. */
+  debug(opts, "close_pds: post-CLOSE rc=%d dcboflgs=0x%02X(open=%d) dcbtiot=0x%04X\n",
+        rc,
+        bh->dcb->dcboflgs,
+        (bh->dcb->dcboflgs & dcbofopn) ? 1 : 0,
+        bh->dcb->dcbtiot);
+
   if (rc) {
     errmsg(opts, "Unable to perform CLOSE. rc:%d\n", rc);
     /* Still attempt DYNFREE and free the handle so we leave no leaks.
@@ -876,11 +903,22 @@ int close_pds(FM_BPAMHandle* bh, const DBG_Opts* opts)
     return rc;
   }
 
-  debug(opts, "Free DD:%s\n", bh->ddname);
+  /* DIAG: confirm DD name and text unit before handing to ddfree.
+   * If dcbtiot is still non-zero here, CLOSE did not remove the TIOT entry
+   * and DYNFREE is the only path left to release the DD.                   */
+  debug(opts, "close_pds: pre-ddfree dd='%s' dcbtiot=0x%04X(0=TIOT cleared by CLOSE)\n",
+        bh->ddname, bh->dcb->dcbtiot);
+
   rc = ddfree(&dd, opts);
   if (rc) {
     errmsg(opts, "DYNFREE (UNFREE) failed for DD:%s rc:%d - dataset may remain allocated\n",
            bh->ddname, rc);
+    /* DIAG: on DYNFREE failure, print the DD text unit that was passed so we
+     * can confirm ddfree received the right key, length and DD name.        */
+    debug(opts, "close_pds: ddfree FAILED dd key=0x%04x lng=%d par='%.*s'\n",
+          dd.s99tukey, (int)dd.s99tulng, (int)dd.s99tulng, dd.s99tupar);
+  } else {
+    debug(opts, "close_pds: ddfree OK dd='%s' - DD released\n", bh->ddname);
   }
 
   free(bh);

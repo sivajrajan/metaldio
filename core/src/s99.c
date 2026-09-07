@@ -103,23 +103,44 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 	rbxp = MALLOC31(sizeof(struct s99_rbx));
 	if (!rbxp) {
 		return 0;
-	} 
+	}
 	parms = MALLOC31(sizeof(struct s99rb));
 	if (!parms) {
 		return 0;
-	} 
+	}
+
+	/* DIAG: print sizes and below-bar addresses of the two key control blocks.
+	 * sizeof(struct s99rb)=20 and sizeof(struct s99_rbx)=36 are the IBM-mandated sizes.
+	 * Any deviation means #pragma pack(1) is not in effect in this TU.         */
+	fprintf(stderr, "s99_init alloc: sizeof(s99rb)=%zu parms=%p  sizeof(s99_rbx)=%zu rbxp=%p\n",
+		sizeof(struct s99rb),  (void*)parms,
+		sizeof(struct s99_rbx), (void*)rbxp);
 
 	va_start(arg_ptr, num_text_units);
 	for (i=0; i<num_text_units; ++i) {
 		struct s99_text_unit* inunit = (struct s99_text_unit*) va_arg(arg_ptr, void*);
 		textunit[i] = calloc_text_unit(inunit);
 	}
-	pp = (unsigned int* PTR32) (&textunit[num_text_units-1]);	
+	pp = (unsigned int* PTR32) (&textunit[num_text_units-1]);
 	*pp |= 0x80000000;
 
 	va_end(arg_ptr);
 
+	/* DIAG: print rbxin (caller's address) and sizeof from both sides of the assign.
+	 * rbxin is the caller's stack address; rbxp is the MALLOC31 below-bar destination.
+	 * If sizeof(*rbxin) != sizeof(*rbxp) the pack(1) scope differs between TUs — the
+	 * struct assign *rbxp = *rbxin will copy the wrong number of bytes.        */
+	fprintf(stderr, "s99_init pre-assign: rbxin=%p sizeof(*rbxin)=%zu  rbxp=%p sizeof(*rbxp)=%zu\n",
+		(void*)rbxin, sizeof(*rbxin),
+		(void*)rbxp,  sizeof(*rbxp));
+
 	*rbxp = *rbxin;
+
+	/* DIAG: eid[0] of source and destination — must both be 0xE2 (EBCDIC 'S').
+	 * 0x00 at rbxp->s99eid[0] means the struct assign did not copy byte 0 correctly. */
+	fprintf(stderr, "s99_init post-assign: rbxin->eid[0]=0x%02X  rbxp->eid[0]=0x%02X (expect 0xE2=EBCDIC S)\n",
+		(unsigned char)rbxin->s99eid[0],
+		(unsigned char)rbxp->s99eid[0]);
 
 	parms->s99rbln = sizeof(struct s99rb);
 	parms->s99verb = verb;
