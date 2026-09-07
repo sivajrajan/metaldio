@@ -119,7 +119,17 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 
 	va_end(arg_ptr);
 
-	*rbxp = *rbxin;
+	/* ROOT FIX: MALLOC31 does not zero; struct assignment of pack(1) bitfield structs is impl-defined — stale byte at offset+7 (s99eopts) may have s99ermsg=1 (0x40) with s99emsgp=NULL, causing IEFDB476 to reject the RBX with rc=0x0C / error 0x03A8. */
+	memset(rbxp, 0, sizeof(struct s99_rbx));      /* zero the heap block first */
+	memcpy(rbxp, rbxin, sizeof(struct s99_rbx));  /* then byte-exact copy of caller template */
+
+	/* GUARD: if s99ermsg(bit1=0x40) is set after copy but s99emsgp is NULL, clear it — routing msgs to NULL always triggers 0x03A8 rejection. */
+	{
+		unsigned char *eopts_byte = (unsigned char *)&rbxp->s99eopts;
+		if ((*eopts_byte & 0x40) && (rbxp->s99emsgp == NULL)) {
+			*eopts_byte &= (unsigned char)~0x40; /* clear s99ermsg: no buffer to route to */
+		}
+	}
 
 	parms->s99rbln = sizeof(struct s99rb);
 	parms->s99verb = (unsigned char)verb; /* explicit cast: enum is 4 bytes, struct field is 1 byte; verb values 1-7 always fit */
