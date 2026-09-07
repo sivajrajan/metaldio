@@ -144,12 +144,14 @@ struct s99_eopts {
 	unsigned char s99ersrv:2;
 };
 
-/* s99_emgsv maps to 1 byte in the IBM RBX at offset +10; same int-container problem as s99_eopts. */
+/* s99_emgsv maps to 1 byte in the IBM RBX at offset +10.
+ * XLC Metal C CCN3159: bitfield container must be unsigned (int-width) under pack(1);
+ * unsigned char is rejected — use unsigned and rely on pack(1) to keep the struct 1 byte. */
 struct s99_emgsv {
-	unsigned char s99xrsrv1:4;
-	unsigned char s99xseve:1;
-	unsigned char s99xwarn:1;
-	unsigned char s99xrsrv2:2;
+	unsigned s99xrsrv1:4;
+	unsigned s99xseve:1;
+	unsigned s99xwarn:1;
+	unsigned s99xrsrv2:2;
 };
 
 #define S99RBXVR 1
