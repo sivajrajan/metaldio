@@ -172,15 +172,17 @@ struct s99_rbx {
 };
 
 struct s99rb {
-	unsigned char s99rbln;   /* length of request block-20*/
-	enum s99_verb s99verb;
-struct s99_flag1 s99flag1;
+	unsigned char s99rbln;   /* RB length; IBM IEFZB4D2 offset 0x00 */
+	unsigned char s99verb;   /* verb code 1 byte at IBM offset 0x01; enum s99_verb is 4 bytes under xlc and must NOT be used directly here */
+	struct s99_flag1 s99flag1; /* 2 bytes at IBM offset 0x02; must use unsigned short bitfields under pack(1) */
 unsigned short s99error;
 unsigned short s99info;
 	struct s99_text_unit* PTR32 * PTR32 s99txtpp;
 	struct s99_rbx* PTR32 s99s99x;
 struct s99_flag2 s99flag2;
 };
+/* Compile-time layout guard: s99rb must be exactly 20 bytes (IBM IEFZB4D2); works in C89/C99/C11 under xlc without -qlanglvl=stdc11. */
+typedef char s99rb_size_check[(sizeof(struct s99rb) == 20) ? 1 : -1];
 
 struct s99_em_bufs {
 	unsigned short embufl1;

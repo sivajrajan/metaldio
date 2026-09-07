@@ -122,7 +122,7 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 	*rbxp = *rbxin;
 
 	parms->s99rbln = sizeof(struct s99rb);
-	parms->s99verb = verb;
+	parms->s99verb = (unsigned char)verb; /* explicit cast: enum is 4 bytes, struct field is 1 byte; verb values 1-7 always fit */
 	parms->s99flag1 = flag1;
 	parms->s99txtpp = textunit;
 	parms->s99s99x = rbxp;
