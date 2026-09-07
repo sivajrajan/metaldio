@@ -57,47 +57,10 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   int rc;
   struct s99_rbx s99rbx = s99rbxtemplate;
 
-  /* DIAG: text unit values passed to DYNFREE — key must be DUNDDNAM=0x0001. */
-  debug(opts, "ddfree: dd key=0x%04x num=%d lng=%d par='%.*s'\n",
-        dd->s99tukey, (int)dd->s99tunum, (int)dd->s99tulng,
-        (int)dd->s99tulng, dd->s99tupar);
-
-  /* DIAG: template address and every RBX field in the local stack copy.
-   * s99rbxtemplate is a static const — its address shows where the original lives.
-   * s99rbx is the stack copy used as the source for s99_init's *rbxp = *rbxin.
-   * s99ermsg=1 (eopts bit1) with emsgp=NULL is the known 0x03A8 trigger.      */
-  debug(opts, "ddfree: &s99rbxtemplate=%p  &s99rbx(stack copy)=%p  sizeof(s99rbx)=%zu\n",
-        (void*)&s99rbxtemplate, (void*)&s99rbx, sizeof(s99rbx));
-  debug(opts, "ddfree: s99rbx eid='%c%c%c%c%c%c'(0x%02X%02X%02X%02X%02X%02X) ever=0x%02X\n",
-        s99rbx.s99eid[0], s99rbx.s99eid[1], s99rbx.s99eid[2],
-        s99rbx.s99eid[3], s99rbx.s99eid[4], s99rbx.s99eid[5],
-        (unsigned char)s99rbx.s99eid[0], (unsigned char)s99rbx.s99eid[1],
-        (unsigned char)s99rbx.s99eid[2], (unsigned char)s99rbx.s99eid[3],
-        (unsigned char)s99rbx.s99eid[4], (unsigned char)s99rbx.s99eid[5],
-        (unsigned char)s99rbx.s99ever);
-  /* DIAG: eopts byte — s99ermsg=1 (0x40) with emsgp=NULL causes IEFDB476 rc=0x0C / error 0x03A8. */
-  debug(opts, "ddfree: s99rbx eopts=0x%02X (eimsg=%d ermsg=%d elsto=%d emkey=%d emsub=%d ewtp=%d) emsgp=%p\n",
-        *((unsigned char*)&s99rbx.s99eopts),
-        s99rbx.s99eopts.s99eimsg, s99rbx.s99eopts.s99ermsg,
-        s99rbx.s99eopts.s99elsto, s99rbx.s99eopts.s99emkey,
-        s99rbx.s99eopts.s99emsub, s99rbx.s99eopts.s99ewtp,
-        s99rbx.s99emsgp);
-
   parms = s99_init(verb, s99flag1, s99flag2, &s99rbx, num_text_units, dd );
   if (!parms) {
     errmsg(opts, "Unable to initialize SVC99 (DYNFREE) control blocks\n");
     return 16;
-  }
-
-  /* DIAG: live RBX pointer inside parms after s99_init — this is what SVC99 actually reads.
-   * Compare rbxp address and eid[0] against the stack copy above to confirm the copy landed correctly. */
-  {
-    struct s99_rbx* PTR32 rbxp = parms->s99s99x;
-    debug(opts, "ddfree: rbxp(live below-bar)=%p eid[0]=0x%02X(expect 0xE2) eopts=0x%02X emsgp=%p\n",
-          (void*)rbxp,
-          rbxp ? (unsigned char)rbxp->s99eid[0] : 0xFF,
-          rbxp ? *((unsigned char*)&rbxp->s99eopts) : 0xFF,
-          rbxp ? rbxp->s99emsgp : (void*)0xDEAD);
   }
 
   rc = S99(parms);

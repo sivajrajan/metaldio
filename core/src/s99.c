@@ -109,13 +109,6 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 		return 0;
 	}
 
-	/* DIAG: print sizes and below-bar addresses of the two key control blocks.
-	 * sizeof(struct s99rb)=20 and sizeof(struct s99_rbx)=36 are the IBM-mandated sizes.
-	 * Any deviation means #pragma pack(1) is not in effect in this TU.         */
-	fprintf(stderr, "s99_init alloc: sizeof(s99rb)=%zu parms=%p  sizeof(s99_rbx)=%zu rbxp=%p\n",
-		sizeof(struct s99rb),  (void*)parms,
-		sizeof(struct s99_rbx), (void*)rbxp);
-
 	va_start(arg_ptr, num_text_units);
 	for (i=0; i<num_text_units; ++i) {
 		struct s99_text_unit* inunit = (struct s99_text_unit*) va_arg(arg_ptr, void*);
@@ -125,14 +118,6 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 	*pp |= 0x80000000;
 
 	va_end(arg_ptr);
-
-	/* DIAG: print rbxin (caller's address) and sizeof from both sides of the assign.
-	 * rbxin is the caller's stack address; rbxp is the MALLOC31 below-bar destination.
-	 * If sizeof(*rbxin) != sizeof(*rbxp) the pack(1) scope differs between TUs — the
-	 * struct assign *rbxp = *rbxin will copy the wrong number of bytes.        */
-	fprintf(stderr, "s99_init pre-assign: rbxin=%p sizeof(*rbxin)=%zu  rbxp=%p sizeof(*rbxp)=%zu\n",
-		(void*)rbxin, sizeof(*rbxin),
-		(void*)rbxp,  sizeof(*rbxp));
 
 	*rbxp = *rbxin;
 
@@ -150,12 +135,6 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 	/* Force s99eopts to all-zero: s99ermsg=1 with s99emsgp=NULL triggers IEFDB476 rc=0x0C / 0x03A8.
 	 * We do not use SVC99 routed messages; s99_prt_msg() handles all error reporting independently. */
 	memset(&rbxp->s99eopts, 0, sizeof(rbxp->s99eopts));
-
-	/* DIAG: after forced writes — eid[0] must be 0xE2, eopts must be 0x00. */
-	fprintf(stderr, "s99_init post-assign: rbxin->eid[0]=0x%02X  rbxp->eid[0]=0x%02X (expect 0xE2=EBCDIC S) eopts=0x%02X(expect 0x00)\n",
-		(unsigned char)rbxin->s99eid[0],
-		(unsigned char)rbxp->s99eid[0],
-		*((unsigned char*)&rbxp->s99eopts));
 
 	parms->s99rbln = sizeof(struct s99rb);
 	parms->s99verb = verb;
