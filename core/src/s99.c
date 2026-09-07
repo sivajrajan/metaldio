@@ -149,8 +149,39 @@ void s99_free(struct s99rb* PTR32 parms)
 void s99_em_fmt_dmp(const DBG_Opts* opts, struct s99_em* PTR32 parms) {
 	char* funct = (char* ) parms;
 	errmsg(opts, "SVC99 EM Parms Dump\n");
-	errmsg(opts, "  EMParms %8.8X FUNCT:%2.2X IDNUM:%2.2X NMSGBAK:%d S99RBP:%8.8X RETCOD:%8.8X CPPLP:%8.8X BUFP:%8.8X WTPCDP:%8.8X\n", 
+	errmsg(opts, "  EMParms %8.8X FUNCT:%2.2X IDNUM:%2.2X NMSGBAK:%d S99RBP:%8.8X RETCOD:%8.8X CPPLP:%8.8X BUFP:%8.8X WTPCDP:%8.8X\n",
 		funct, *funct, parms->emidnum, parms->emnmsgbk, parms->ems99rbp, parms->emretcod, parms->emcpplp, parms->embufp, parms->emwtpcdp);
+}
+
+/* s99_rbx_fmt_dmp - print every field of the s99_rbx by name so a failing IEFDB476 call can be fully diagnosed without a hex dump. */
+static void s99_rbx_fmt_dmp(const DBG_Opts* opts, struct s99_rbx* PTR32 rbx) {
+	if (!rbx) { errmsg(opts, "  S99RBX: <NULL>\n"); return; }
+	unsigned char eopts_byte = *((unsigned char*)&rbx->s99eopts);   /* collapse bitfield to one byte for printing */
+	unsigned char emgsv_byte = *((unsigned char*)&rbx->s99emgsv);   /* collapse bitfield to one byte for printing */
+	errmsg(opts, "S99RBX Fields:\n");
+	errmsg(opts, "  EID:    '%.6s'\n",  rbx->s99eid);               /* eye-catcher: must be 'S99RBX' */
+	errmsg(opts, "  EVER:   0x%02X\n",  (unsigned char)rbx->s99ever);   /* version: must be 1 (S99RBXVR) */
+	errmsg(opts, "  EOPTS:  0x%02X  (eimsg=%d ermsg=%d elsto=%d emkey=%d emsub=%d ewtp=%d)\n",
+		eopts_byte,
+		rbx->s99eopts.s99eimsg, rbx->s99eopts.s99ermsg,             /* ermsg=1 + emsgp=NULL → IEFDB476 rc=0x0C */
+		rbx->s99eopts.s99elsto, rbx->s99eopts.s99emkey,
+		rbx->s99eopts.s99emsub, rbx->s99eopts.s99ewtp);
+	errmsg(opts, "  ESUBP:  0x%02X\n",  (unsigned char)rbx->s99esubp);  /* subsystem identifier (0=default) */
+	errmsg(opts, "  EKEY:   0x%02X\n",  (unsigned char)rbx->s99ekey);   /* storage protect key (0=caller's key) */
+	errmsg(opts, "  EMGSV:  0x%02X  (xseve=%d xwarn=%d)\n",
+		emgsv_byte,
+		rbx->s99emgsv.s99xseve, rbx->s99emgsv.s99xwarn);            /* message severity overrides */
+	errmsg(opts, "  ENMSG:  0x%02X\n",  (unsigned char)rbx->s99enmsg);  /* number of messages to suppress */
+	errmsg(opts, "  ECPPL:  0x%08X\n", rbx->s99ecppl);               /* CPPL pointer (0=not a TSO command) */
+	errmsg(opts, "  ERCR:   0x%02X\n",  (unsigned char)rbx->s99ercr);   /* return code reason: routing */
+	errmsg(opts, "  ERCM:   0x%02X\n",  (unsigned char)rbx->s99ercm);   /* return code reason: module */
+	errmsg(opts, "  ERCO:   0x%02X\n",  (unsigned char)rbx->s99erco);   /* return code reason: offset */
+	errmsg(opts, "  ERCF:   0x%02X\n",  (unsigned char)rbx->s99ercf);   /* return code reason: flag */
+	errmsg(opts, "  EWRC:   0x%08X\n", rbx->s99ewrc);                /* extended return code */
+	errmsg(opts, "  EMSGP:  0x%08X\n", rbx->s99emsgp);               /* message buffer ptr: must be non-NULL if ermsg=1 */
+	errmsg(opts, "  EERR:   0x%04X\n",  rbx->s99eerr);                /* extended error code */
+	errmsg(opts, "  EINFO:  0x%04X\n",  rbx->s99einfo);               /* extended info code */
+	errmsg(opts, "  ERSN:   0x%08X\n", rbx->s99ersn);                /* extended reason code */
 }
 
 int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99rc) 
@@ -178,11 +209,10 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 
 	rc = S99MSG(msgparms);
 	if (rc) {
-		/* Always emit the concise human-readable failure messages so
-		 * that callers using error_buffer receive an explanation.
-		 * Guard only the raw internal dump behind the debug flag.    */
 		errmsg(opts, "SVC99MSG rc:0x%x\n", rc);
 		errmsg(opts, "IEFDB476 failed with rc:0x%x\n", rc);
+		/* Dump the full RBX on any IEFDB476 failure — not just debug — so the exact bad field is always visible. */
+		s99_rbx_fmt_dmp(opts, svc99parms->s99s99x);
 		if (opts && opts->debug) {
 			s99_em_fmt_dmp(opts, msgparms);
 		}
