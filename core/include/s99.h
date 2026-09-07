@@ -130,21 +130,27 @@ struct s99_text_unit {
 #define DALSTATS_NEW   0x4
 #define DALSTATS_SHR   0x8
 
+/* Use unsigned char containers so the bitfield storage width (1 byte) matches the
+ * container width.  Under #pragma pack(1), int containers are still 4-byte wide for
+ * bit-allocation and aggregate-initialiser offset purposes, which causes XLC to
+ * misplace adjacent members (s99eid[0]) in static initialisers and struct copies.
+ * unsigned char containers are 1 byte wide in both senses — no misalignment.      */
 struct s99_eopts {
-	int s99eimsg:1;
-	int s99ermsg:1;
-	int s99elsto:1;
-	int s99emkey:1;
-	int s99emsub:1;
-	int s99ewtp:1;
-	int s99ersrv:2;
+	unsigned char s99eimsg:1;
+	unsigned char s99ermsg:1;
+	unsigned char s99elsto:1;
+	unsigned char s99emkey:1;
+	unsigned char s99emsub:1;
+	unsigned char s99ewtp:1;
+	unsigned char s99ersrv:2;
 };
 
+/* Same fix applied to s99_emgsv for the same reason. */
 struct s99_emgsv {
-	int s99xrsrv1:4;
-	int s99xseve:1;
-	int s99xwarn:1;
-	int s99xrsrv2:2;
+	unsigned char s99xrsrv1:4;
+	unsigned char s99xseve:1;
+	unsigned char s99xwarn:1;
+	unsigned char s99xrsrv2:2;
 };
 
 #define S99RBXVR 1
