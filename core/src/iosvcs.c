@@ -57,6 +57,15 @@ int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
   int rc;
   struct s99_rbx s99rbx = s99rbxtemplate;
 
+  /* DIAG: print addresses and sizes of both the stack copy and the static template.
+   * s99rbx is a plain auto variable → 64-bit above-bar address (no PTR32).
+   * s99rbxtemplate is static const → also 64-bit above-bar.
+   * Any address > 0x7FFFFFFF confirms it is in the 64-bit address space and
+   * cannot be used directly by SVC99 (which requires below-bar PTR32 storage). */
+  debug(opts, "AMODE64 ptrs: &s99rbx=0x%016llX sizeof(s99rbx)=%zu  &s99rbxtemplate=0x%016llX sizeof(template)=%zu\n",
+        (unsigned long long)(uintptr_t)&s99rbx,        sizeof(s99rbx),
+        (unsigned long long)(uintptr_t)&s99rbxtemplate, sizeof(s99rbxtemplate));
+
   /* DIAG: dump the text unit we are about to free so we can verify key/length/value before SVC99. */
   debug(opts, "pre-ddfree: dd.__verb(s99tukey)=0x%04x (expect DUNDDNAM=0x0001) S99VRBUN=0x%02x dd.s99tulng=%d dd.s99tupar='%.*s'\n",
         dd->s99tukey, (unsigned int)S99VRBUN, (int)dd->s99tulng, (int)dd->s99tulng, dd->s99tupar);
