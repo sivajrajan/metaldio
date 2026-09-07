@@ -133,21 +133,23 @@ struct s99_text_unit {
 #define DALSTATS_NEW   0x4
 #define DALSTATS_SHR   0x8
 
+/* s99_eopts maps to 1 byte in the IBM RBX at offset +7; int container = 4 bytes under pack(1), corrupting all fields after it. */
 struct s99_eopts {
-	int s99eimsg:1;
-	int s99ermsg:1;
-	int s99elsto:1;
-	int s99emkey:1;
-	int s99emsub:1;
-	int s99ewtp:1;
-	int s99ersrv:2;
+	unsigned char s99eimsg:1;
+	unsigned char s99ermsg:1;
+	unsigned char s99elsto:1;
+	unsigned char s99emkey:1;
+	unsigned char s99emsub:1;
+	unsigned char s99ewtp:1;
+	unsigned char s99ersrv:2;
 };
 
+/* s99_emgsv maps to 1 byte in the IBM RBX at offset +10; same int-container problem as s99_eopts. */
 struct s99_emgsv {
-	int s99xrsrv1:4;
-	int s99xseve:1;
-	int s99xwarn:1;
-	int s99xrsrv2:2;
+	unsigned char s99xrsrv1:4;
+	unsigned char s99xseve:1;
+	unsigned char s99xwarn:1;
+	unsigned char s99xrsrv2:2;
 };
 
 #define S99RBXVR 1
