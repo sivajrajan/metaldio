@@ -120,20 +120,17 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 
 	va_end(arg_ptr);
 
-	/* DIAG: print rbxin (64-bit incoming ptr from caller stack) and rbxp (PTR32 below-bar heap ptr).
-	 * rbxin > 0x7FFFFFFF → above-bar 64-bit address → struct assign crosses the bar.
-	 * rbxp  < 0x80000000 → below-bar 32-bit address → SVC99-safe destination.
-	 * sizeof printed from both sides confirms whether pack(1)+PTR32 size agrees across the bar. */
-	debug(opts, "s99_init ptrs: rbxin=0x%016llX sizeof(*rbxin)=%zu  rbxp=0x%08X sizeof(*rbxp)=%zu\n",
+	/* DIAG: s99_init has no opts param so use fprintf(stderr) directly.
+	 * rbxin > 0x7FFFFFFF → above-bar 64-bit stack ptr → struct assign crosses the bar.
+	 * rbxp  < 0x80000000 → below-bar PTR32 heap ptr → SVC99-safe destination. */
+	fprintf(stderr, "s99_init ptrs: rbxin=0x%016llX sizeof(*rbxin)=%zu  rbxp=0x%08X sizeof(*rbxp)=%zu\n",
 		(unsigned long long)(uintptr_t)rbxin, sizeof(*rbxin),
 		(unsigned int)(uintptr_t)rbxp,        sizeof(*rbxp));
 
-	*rbxp = *rbxin; /* struct-assign: crosses 64→31 bar when rbxin is a stack ptr; see AMODE64 ptrs diagnostic above */
+	*rbxp = *rbxin; /* struct-assign: crosses 64→31 bar when rbxin is a stack ptr */
 
-	/* DIAG: print s99eid[0] of both source and destination after the assign.
-	 * rbxin->s99eid[0] must be 0xE2 (EBCDIC 'S').  If rbxp->s99eid[0] is 0x00
-	 * the cross-bar struct copy is confirmed as the corruption source.         */
-	debug(opts, "s99_init post-assign: rbxin->s99eid[0]=0x%02X  rbxp->s99eid[0]=0x%02X (both must be 0xE2)\n",
+	/* DIAG: if rbxp->s99eid[0] is 0x00 after assign, cross-bar copy corruption confirmed. */
+	fprintf(stderr, "s99_init post-assign: rbxin->s99eid[0]=0x%02X  rbxp->s99eid[0]=0x%02X (both must be 0xE2)\n",
 		(unsigned char)rbxin->s99eid[0],
 		(unsigned char)rbxp->s99eid[0]);
 

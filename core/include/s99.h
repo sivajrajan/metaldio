@@ -133,15 +133,16 @@ struct s99_text_unit {
 #define DALSTATS_NEW   0x4
 #define DALSTATS_SHR   0x8
 
-/* s99_eopts maps to 1 byte in the IBM RBX at offset +7; int container = 4 bytes under pack(1), corrupting all fields after it. */
+/* s99_eopts maps to 1 byte in the IBM RBX at offset +7.
+ * XLC Metal C CCN3159: unsigned char bitfield container rejected — use unsigned; pack(1) keeps it 1 byte. */
 struct s99_eopts {
-	unsigned char s99eimsg:1;
-	unsigned char s99ermsg:1;
-	unsigned char s99elsto:1;
-	unsigned char s99emkey:1;
-	unsigned char s99emsub:1;
-	unsigned char s99ewtp:1;
-	unsigned char s99ersrv:2;
+	unsigned s99eimsg:1;
+	unsigned s99ermsg:1;
+	unsigned s99elsto:1;
+	unsigned s99emkey:1;
+	unsigned s99emsub:1;
+	unsigned s99ewtp:1;
+	unsigned s99ersrv:2;
 };
 
 /* s99_emgsv maps to 1 byte in the IBM RBX at offset +10.
