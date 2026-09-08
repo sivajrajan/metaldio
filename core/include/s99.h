@@ -130,27 +130,31 @@ struct s99_text_unit {
 #define DALSTATS_NEW   0x4
 #define DALSTATS_SHR   0x8
 
-/* Use unsigned char containers so the bitfield storage width (1 byte) matches the
- * container width.  Under #pragma pack(1), int containers are still 4-byte wide for
- * bit-allocation and aggregate-initialiser offset purposes, which causes XLC to
- * misplace adjacent members (s99eid[0]) in static initialisers and struct copies.
- * unsigned char containers are 1 byte wide in both senses — no misalignment.      */
+/* Both structs hold exactly 8 bits of bit-fields.  Under the active #pragma pack(1),
+ * XLC allocates storage for a bit-field container in units of
+ * min(sizeof(container_type), pack_boundary).  With pack boundary == 1, an
+ * unsigned int container is packed to 1 byte, so sizeof(s99_eopts) ==
+ * sizeof(s99_emgsv) == 1 — matching the SVC99 extended-RB layout exactly.
+ *
+ * unsigned int is the only multi-bit-field container type accepted by XLC in its
+ * default C89 mode.  Using unsigned char triggers CCN3159 ("Bit field type
+ * specified for <field> is not valid. Type unsigned assumed.") because C89 only
+ * permits int/unsigned int/signed int/_Bool as bit-field base types.              */
 struct s99_eopts {
-	unsigned char s99eimsg:1;
-	unsigned char s99ermsg:1;
-	unsigned char s99elsto:1;
-	unsigned char s99emkey:1;
-	unsigned char s99emsub:1;
-	unsigned char s99ewtp:1;
-	unsigned char s99ersrv:2;
+	unsigned int s99eimsg:1;
+	unsigned int s99ermsg:1;
+	unsigned int s99elsto:1;
+	unsigned int s99emkey:1;
+	unsigned int s99emsub:1;
+	unsigned int s99ewtp:1;
+	unsigned int s99ersrv:2;
 };
 
-/* Same fix applied to s99_emgsv for the same reason. */
 struct s99_emgsv {
-	unsigned char s99xrsrv1:4;
-	unsigned char s99xseve:1;
-	unsigned char s99xwarn:1;
-	unsigned char s99xrsrv2:2;
+	unsigned int s99xrsrv1:4;
+	unsigned int s99xseve:1;
+	unsigned int s99xwarn:1;
+	unsigned int s99xrsrv2:2;
 };
 
 #define S99RBXID "S99RBX"   /* 6-byte EBCDIC eye-catcher required by IEFDB476 */
