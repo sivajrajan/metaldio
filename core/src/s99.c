@@ -9,14 +9,14 @@
 #include "wrappers.h"
 #include "msg.h"
 
-static size_t text_unit_size(struct s99_text_unit* inunit)
+static size_t text_unit_size(struct s99_text_unit* inunit) 
 {
 	struct s99_basic_text_unit* tunit = (struct s99_basic_text_unit*) inunit;
 	size_t tunitsize;
 	size_t i;
 	switch (tunit->s99tukey) {
 		case DALBRTKN:
-			tunitsize = sizeof(struct s99_browse_token_text_unit);
+			tunitsize = sizeof(struct s99_browse_token_text_unit); 
 			break;
 		default:
 			tunitsize = sizeof(struct s99_basic_text_unit);
@@ -28,7 +28,7 @@ static size_t text_unit_size(struct s99_text_unit* inunit)
 	return tunitsize;
 }
 
-static struct s99_text_unit* PTR32 calloc_text_unit(struct s99_text_unit* inunit)
+static struct s99_text_unit* PTR32 calloc_text_unit(struct s99_text_unit* inunit) 
 {
 	struct s99_text_unit* PTR32 outunit;
 	int i;
@@ -42,7 +42,7 @@ static struct s99_text_unit* PTR32 calloc_text_unit(struct s99_text_unit* inunit
 	return outunit;
 }
 
-void s99_fmt_dmp(const DBG_Opts* opts, struct s99rb* PTR32 parms)
+void s99_fmt_dmp(const DBG_Opts* opts, struct s99rb* PTR32 parms) 
 {
 	size_t tunitsize;
 	unsigned int* PTR32 p;
@@ -58,19 +58,20 @@ void s99_fmt_dmp(const DBG_Opts* opts, struct s99rb* PTR32 parms)
 	unsigned int* s99flag2 = (unsigned int*)&parms->s99flag2;
 
 	errmsg(opts, "SVC99 Formatted Dump\n");
-	errmsg(opts, "  RBLN:%d VERB:%d FLAG1:%4.4X ERROR:%4.4X INFO:%4.4X FLAG2:%8.8X\n",
+	errmsg(opts, "  RBLN:%d VERB:%d FLAG1:%4.4X ERROR:%4.4X INFO:%4.4X FLAG2:%8.8X\n", 
 		parms->s99rbln, *s99verb, *s99flag1, *s99error, *s99info, *s99flag2);
 
 	errmsg(opts, "SVC99 RB\n");
-	dumpstg(opts, parms, sizeof(struct s99rb));
+  dumpstg(opts, parms, sizeof(struct s99rb));
+
 
 	if (rbx) {
 		char* s99eopts = (char*) &rbx->s99eopts;
 		char* s99emgsv = (char*) &rbx->s99emgsv;
-		errmsg(opts, "\nSVC99 RBX: %8.8X", rbx);
-		dumpstg(opts, rbx, sizeof(struct s99_rbx));
-		errmsg(opts, "\n  EID:%6.6s EVER: %2.2X EOPTS: %2.2X SUBP: %2.2x EKEY: %2.2X EMGSV: %2.2X ECPPL: %8.8X EMSGP: %8.8X ERCO: %2.2x\n",
-			rbx->s99eid, rbx->s99ever, *s99eopts, rbx->s99esubp, rbx->s99ekey, *s99emgsv, rbx->s99ecppl, rbx->s99emsgp, rbx->s99erco);
+	  errmsg(opts, "\nSVC99 RBX: %8.8X", rbx);
+    dumpstg(opts, rbx, sizeof(struct s99_rbx));
+		errmsg(opts, "\n  EID:%6.6s EVER: %2.2X EOPTS: %2.2X SUBP: %2.2x EKEY: %2.2X EMGSV: %2.2X ECPPL: %8.8X EMSGP: %8.8X ERCO: %2.2x\n", 
+			rbx->s99eid, rbx->s99ever, *s99eopts, rbx->s99esubp, rbx->s99ekey, *s99emgsv, rbx->s99ecppl, rbx->s99emsgp, rbx->s99erco); 
 	} else {
 		errmsg(opts, "\n");
 	}
@@ -120,13 +121,15 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 
 	*rbxp = *rbxin;
 
-	/* Write S99RBXID eye-catcher via memcpy — immune to XLC pack(1) alignment artefacts on struct copy. */
+	/* Force eye-catcher S99RBXID into rbxp->s99eid via memcpy — immune to XLC pack(1)
+	 * struct-copy alignment artefacts that can corrupt the field via struct assignment. */
 	memcpy(rbxp->s99eid, S99RBXID, sizeof(rbxp->s99eid));
 
-	/* Set version byte to S99RBXVR=1 — always required; may be zero after corrupt struct copy. */
+	/* Force version byte to S99RBXVR=1 — always required; may be zero if template copy went wrong. */
 	rbxp->s99ever = S99RBXVR;
 
-	/* Zero s99eopts — s99ermsg=1 with NULL s99emsgp triggers IEFDB476 rc=0x0C/0x03A8. */
+	/* Force s99eopts to all-zero: s99ermsg=1 with s99emsgp=NULL triggers IEFDB476 rc=0x0C / 0x03A8.
+	 * We do not use SVC99 routed messages; s99_prt_msg() handles all error reporting independently. */
 	memset(&rbxp->s99eopts, 0, sizeof(rbxp->s99eopts));
 
 	parms->s99rbln = sizeof(struct s99rb);
@@ -139,14 +142,14 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 	return parms;
 }
 
-void s99_free(struct s99rb* PTR32 parms)
+void s99_free(struct s99rb* PTR32 parms) 
 {
 	int i=0;
 	unsigned int txtunit;
 	do {
 		unsigned int* PTR32 txtunitp = (unsigned int* PTR32) (&parms->s99txtpp[i]);
 		txtunit = *txtunitp;
-		free(parms->s99txtpp[i]);
+		free(parms->s99txtpp[i]); 
 		++i;
 	} while ((txtunit & 0x80000000) == 0);
 	free(parms->s99txtpp);
@@ -157,13 +160,13 @@ void s99_free(struct s99rb* PTR32 parms)
 void s99_em_fmt_dmp(const DBG_Opts* opts, struct s99_em* PTR32 parms) {
 	char* funct = (char* ) parms;
 	errmsg(opts, "SVC99 EM Parms Dump\n");
-	errmsg(opts, "  EMParms %8.8X FUNCT:%2.2X IDNUM:%2.2X NMSGBAK:%d S99RBP:%8.8X RETCOD:%8.8X CPPLP:%8.8X BUFP:%8.8X WTPCDP:%8.8X\n",
+	errmsg(opts, "  EMParms %8.8X FUNCT:%2.2X IDNUM:%2.2X NMSGBAK:%d S99RBP:%8.8X RETCOD:%8.8X CPPLP:%8.8X BUFP:%8.8X WTPCDP:%8.8X\n", 
 		funct, *funct, parms->emidnum, parms->emnmsgbk, parms->ems99rbp, parms->emretcod, parms->emcpplp, parms->embufp, parms->emwtpcdp);
 }
 
-int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99rc)
+int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99rc) 
 {
-	struct s99_em* PTR32 msgparms;
+	struct s99_em* PTR32 msgparms; 
 	int rc;
 
 	msgparms = MALLOC31(sizeof(struct s99_em));
@@ -181,7 +184,7 @@ int s99_prt_msg(const DBG_Opts* opts, struct s99rb* PTR32 svc99parms, int svc99r
 
 #if 0
 	errmsg(opts, "SVC99 parms:%p rc:0x%x\n", svc99parms, svc99rc);
-	errmsg(opts, "SVC99 failed with error:%d (0x%x) info: %d (0x%x)\n",
+	errmsg(opts, "SVC99 failed with error:%d (0x%x) info: %d (0x%x)\n", 
 		svc99parms->s99error, svc99parms->s99error, svc99parms->s99info, svc99parms->s99info);
 #endif
 
