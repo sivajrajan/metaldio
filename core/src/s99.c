@@ -103,18 +103,18 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 	rbxp = MALLOC31(sizeof(struct s99_rbx));
 	if (!rbxp) {
 		return 0;
-	}
+	} 
 	parms = MALLOC31(sizeof(struct s99rb));
 	if (!parms) {
 		return 0;
-	}
+	} 
 
 	va_start(arg_ptr, num_text_units);
 	for (i=0; i<num_text_units; ++i) {
 		struct s99_text_unit* inunit = (struct s99_text_unit*) va_arg(arg_ptr, void*);
 		textunit[i] = calloc_text_unit(inunit);
 	}
-	pp = (unsigned int* PTR32) (&textunit[num_text_units-1]);
+	pp = (unsigned int* PTR32) (&textunit[num_text_units-1]); 
 	*pp |= 0x80000000;
 
 	va_end(arg_ptr);
