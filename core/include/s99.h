@@ -153,6 +153,7 @@ struct s99_emgsv {
 	unsigned char s99xrsrv2:2;
 };
 
+#define S99RBXID "S99RBX"   /* 6-byte EBCDIC eye-catcher required by IEFDB476 */
 #define S99RBXVR 1
 struct s99_rbx {
 	char s99eid[6];

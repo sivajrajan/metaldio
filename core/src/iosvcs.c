@@ -14,7 +14,7 @@
 #define DIO_MSG_BUFF_LEN (4095)
 
 /* s99_init unconditionally overwrites eid/ever/eopts — template values are backstop only. */
-static const struct s99_rbx s99rbxtemplate = {"S99RBX", S99RBXVR, {0}, 0, 0, 0};
+static const struct s99_rbx s99rbxtemplate = {S99RBXID, S99RBXVR, {0}, 0, 0, 0};
 
 int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd, struct s99_common_text_unit* disp, const DBG_Opts* opts)
 {
