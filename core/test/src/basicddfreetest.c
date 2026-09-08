@@ -7,6 +7,7 @@
 #include "s99.h"
 #include "iosvcs.h"
 #include "dio.h"
+#include "ihadcb.h"
 #include "bpamio.h"
 /*
  * basicddfreetest.c  -  Regression tests for DYNFREE fixes in iosvcs.c /
@@ -306,6 +307,18 @@ static void test_close_pds_dynfree_failure(void)
 }
 
 /* ------------------------------------------------------------------ */
+static void test_dcb_init_free(void)
+{
+    const char *tname = "test_dcb_init_free";
+    struct ihadcb* PTR32 dcb = dcb_init(NULL);
+    if (!dcb) {
+        record_fail(tname, "dcb_init returned NULL");
+        return;
+    }
+    dcb_free(dcb);
+    record_pass(tname);
+}
+
 int main(int argc, char* argv[])
 {
     (void)argc;
@@ -313,6 +326,7 @@ int main(int argc, char* argv[])
 
     fprintf(stdout, "=== basicddfreetest: DYNFREE / close_pds regression tests ===\n");
 
+    test_dcb_init_free();
     test_alloc_free_roundtrip();
     test_ddfree_null_opts_on_error();
     test_s99_prt_msg_null_opts();
