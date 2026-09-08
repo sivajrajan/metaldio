@@ -8,63 +8,6 @@
 #include "iosvcs.h"
 #include "dio.h"
 #include "bpamio.h"
-/*
- * basicddfreetest.c  -  Regression tests for DYNFREE fixes in iosvcs.c /
- *                        s99.c / bpamio.c
- *
- * Background
- * ----------
- * ddfree() (iosvcs.c) previously passed stderr (a FILE*) as the first
- * argument to s99_fmt_dmp() and s99_prt_msg(), both of which expect a
- * const DBG_Opts*.  msg.c reads opts->info_buffer from the first bytes of
- * whatever pointer is passed.  The FILE struct bytes are non-zero in that
- * position, so msg.c treated the value as a valid buffer pointer and wrote
- * into it, causing an S0C4 Protection Exception.
- *
- * Additionally, close_pds() (bpamio.c) did not call ddfree() when CLOSE
- * failed, did not free the BPAMHandle on the CLOSE failure path, and did
- * not emit any diagnostic when ddfree() itself failed.  The silent
- * DYNFREE failure left PDS/PDSE datasets allocated after a write, blocking
- * dmod / dsed / IDCAMS from obtaining exclusive access and causing cascading
- * BGYSC4809E / BGYSC4909E / IDC0548I failures across the test suite.
- *
- * Fixes applied
- * -------------
- * iosvcs.h  ddfree():      added const DBG_Opts* opts parameter
- * iosvcs.c  ddfree():      errmsg(opts,...) replaces fprintf(stderr,...);
- *                           s99_fmt_dmp(opts,...) / s99_prt_msg(opts,...);
- *                           s99_free(parms) called on S99() error path
- *                           (previously leaked the s99rb on failure).
- * s99.c     s99_prt_msg(): if (opts && opts->debug) { s99_em_fmt_dmp(...) }
- *           s99_em_fmt_dmp() new helper dumps the s99_em parameter block.
- * bpamio.c  close_pds():   on CLOSE failure: ddfree()+free(bh) before return;
- *                           on DYNFREE failure: errmsg() diagnostic emitted,
- *                           free(bh) always called, rc propagated to caller.
- *
- * Tests
- * -----
- * Test 1 - dsdd_alloc / ddfree round-trip (success path)
- *   Allocates SYS1.MACLIB DISP=SHR and frees it.  Confirms the success
- *   path is unaffected by the change.
- *
- * Test 2 - ddfree() error path: NULL opts must not S0C4
- *   Forces SVC99 UNFREE to fail by calling ddfree() a second time on an
- *   already-freed DDname.  Before the fix this abended with S0C4.
- *   After the fix ddfree() must return non-zero and execution continues.
- *
- * Test 3 - s99_prt_msg() with opts==NULL: NULL guard must hold
- *   Calls s99_prt_msg() directly with opts==NULL and a synthetic s99rb
- *   (verb=S99VRBUN so emidnum=EMFREE, matching the ddfree() error path).
- *   Confirms that the if (opts && opts->debug) guard prevents any
- *   dereference of opts and that s99_em_fmt_dmp() is not reached.
- *
- * Test 4 - close_pds() DYNFREE-failure path: rc propagated, no abend
- *   Opens SYS1.MACLIB for read, steals the DD via a direct ddfree() call
- *   so that the DD no longer exists when close_pds() tries to UNFREE it.
- *   Asserts that close_pds() returns non-zero (failure propagated) and
- *   that execution reaches the assertion line (no abend / S0C4).
- */
-
 /* SYS1.MACLIB is present on every z/OS system and allocatable DISP=SHR. */
 #define TEST_DSN "SYS1.MACLIB"
 
@@ -85,14 +28,6 @@ static void record_fail(const char *name, const char *reason)
 }
 
 /* ------------------------------------------------------------------ */
-/*
- * Test 1 - dsdd_alloc / ddfree round-trip
- *
- * Pattern taken from basicalloc.c:
- *   init_dsnam_text_unit  dsdd_alloc  capture DDname  ddfree
- * opts==NULL throughout, matching the fixed code in both iosvcs.c
- * functions.  ddfree() must return 0.
- */
 static void test_alloc_free_roundtrip(void)
 {
     const char *tname = "test_alloc_free_roundtrip";
@@ -129,15 +64,8 @@ static void test_alloc_free_roundtrip(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*
- * Test 2 - ddfree() NULL-opts error path (S0C4 regression)
- *
- * 1. Allocate a DDname.
- * 2. Free it once  (rc must be 0).
- * 3. Free it again - SVC99 UNFREE must fail (DDname gone).
- *    Before the fix: abend S0C4 inside s99_prt_msg / msg.c.
- *    After the fix:  non-zero rc returned, program survives.
- */
+/* Test 2 - ddfree() error path with opts==NULL: allocate a DD, free it
+ * twice.  Second free must return non-zero without abending. */
 static void test_ddfree_null_opts_on_error(void)
 {
     const char *tname = "test_ddfree_null_opts_on_error";
@@ -166,11 +94,7 @@ static void test_ddfree_null_opts_on_error(void)
         return;
     }
 
-    /*
-     * Second free - SVC99 UNFREE should fail.
-     * This call exercised the S0C4 path before the fix.
-     * Execution reaching the next line proves no abend occurred.
-     */
+    /* Second free on an already-freed DDname — SVC99 UNFREE must fail. */
     rc = ddfree(&dd, NULL);
     if (rc == 0) {
         record_fail(tname, "second ddfree returned 0 - SVC99 UNFREE should have failed");
@@ -182,21 +106,8 @@ static void test_ddfree_null_opts_on_error(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*
- * Test 3 - s99_prt_msg() with opts==NULL: guard in s99_prt_msg
- *
- * Calls s99_prt_msg() directly with opts==NULL.  Uses S99VRBUN so
- * emidnumEMFREE, the same path taken by ddfree() on error.
- *
- * All SVC99 control blocks are allocated below the bar (MALLOC31) as
- * required for SVC99 / S99MSG.  The text-unit pointer array has the
- * high-bit set on its single entry to mark end-of-list.
- *
- * Assertion: s99_prt_msg returns without abending.
- * The return value may be 0 (S99MSG retrieved a message) or non-zero
- * (S99MSG failed but debug output suppressed by NULL guard) - both
- * outcomes are acceptable; the absence of abend is what is verified.
- */
+/* Test 3 - s99_prt_msg() with opts==NULL: call with a synthetic below-bar
+ * s99rb (verb=S99VRBUN).  Function must return without abending. */
 static void test_s99_prt_msg_null_opts(void)
 {
     const char *tname = "test_s99_prt_msg_null_opts";
@@ -250,23 +161,13 @@ static void test_s99_prt_msg_null_opts(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*
- * Test 4 - close_pds() DYNFREE-failure path: rc propagated, no abend
+/* Test 4 - close_pds() DYNFREE-failure path: open SYS1.MACLIB for read,
+ * steal the DDname via ddfree(), then call close_pds().  CLOSE succeeds
+ * but the subsequent DYNFREE fails because the DD is already gone.
+ * close_pds() must return non-zero and must not abend.
  *
- * Strategy: open SYS1.MACLIB for read (gets a real BPAM handle with a
- * valid DDname), then steal the DDname by calling ddfree() directly on
- * the same DDname.  When close_pds() is then called, CLOSE() will
- * succeed (the DCB is still open), but the subsequent DYNFREE (UNFREE)
- * inside close_pds() will fail because the DD no longer exists.
- *
- * The FM_BPAMHandle internal layout puts the DDname as the first field
- * (a char[9] at offset 0 per bpamint.h), so we can read it by casting
- * the handle pointer to const char* without including bpamint.h.
- *
- * Assertions:
- *   a) close_pds() returns non-zero  (DYNFREE failure is propagated)
- *   b) execution reaches the assert line  (no abend / S0C4)
- */
+ * FM_BPAMHandle places char ddname[8+1] at offset 0 (bpamint.h), so the
+ * DDname can be read by casting the handle pointer to const char*. */
 static void test_close_pds_dynfree_failure(void)
 {
     const char *tname = "test_close_pds_dynfree_failure";
@@ -278,12 +179,6 @@ static void test_close_pds_dynfree_failure(void)
         return;
     }
 
-    /*
-     * Read the DDname from the handle.
-     * FM_BPAMHandle is opaque outside services/; however the internal
-     * struct (bpamint.h) places char ddname[8+1] at offset 0.
-     * We cast to const char* to copy it without needing bpamint.h.
-     */
     char stolen_ddname[8+1];
     memcpy(stolen_ddname, (const char*) bh, 8);
     stolen_ddname[8] = '\0';
@@ -307,14 +202,6 @@ static void test_close_pds_dynfree_failure(void)
     }
     fprintf(stdout, "  [info] DD stolen successfully; calling close_pds() now\n");
 
-    /*
-     * close_pds() will CLOSE the DCB (succeeds) then attempt DYNFREE
-     * (fails - DD already gone).  The fixed code must:
-     *   - emit an errmsg diagnostic (routed through opts=NULL -> suppressed)
-     *   - call free(bh)
-     *   - return the non-zero DYNFREE rc
-     * No abend must occur.
-     */
     rc = close_pds(bh, NULL);
 
     /* Execution reaching this line proves no abend occurred */
