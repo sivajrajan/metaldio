@@ -121,15 +121,13 @@ struct s99rb* PTR32 s99_init(enum s99_verb verb, struct s99_flag1 flag1, struct 
 
 	*rbxp = *rbxin;
 
-	/* Force eye-catcher S99RBXID into rbxp->s99eid via memcpy — immune to XLC pack(1)
-	 * struct-copy alignment artefacts that can corrupt the field via struct assignment. */
+	/* Write S99RBXID eye-catcher via memcpy — immune to XLC pack(1) alignment artefacts on struct copy. */
 	memcpy(rbxp->s99eid, S99RBXID, sizeof(rbxp->s99eid));
 
-	/* Force version byte to S99RBXVR=1 — always required; may be zero if template copy went wrong. */
+	/* Set version byte to S99RBXVR=1 — always required; may be zero after corrupt struct copy. */
 	rbxp->s99ever = S99RBXVR;
 
-	/* Force s99eopts to all-zero: s99ermsg=1 with s99emsgp=NULL triggers IEFDB476 rc=0x0C / 0x03A8.
-	 * We do not use SVC99 routed messages; s99_prt_msg() handles all error reporting independently. */
+	/* Zero s99eopts — s99ermsg=1 with NULL s99emsgp triggers IEFDB476 rc=0x0C/0x03A8. */
 	memset(&rbxp->s99eopts, 0, sizeof(rbxp->s99eopts));
 
 	parms->s99rbln = sizeof(struct s99rb);
