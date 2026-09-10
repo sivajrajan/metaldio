@@ -8,6 +8,7 @@
 #include "metaldio.h"
 #include "msg.h"
 #include "s99.h"
+#include "msg.h"
 
 
 #define DD_SYSTEM "????????"
