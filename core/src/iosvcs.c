@@ -1,19 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "metaldio.h"
 #include "dio.h"
-#include "mem.h"
 #include "ihadcb.h"
 #include "iosvcs.h"
-#include "s99.h"
+#include "mem.h"
+#include "metaldio.h"
 #include "msg.h"
+#include "s99.h"
+
 
 #define DD_SYSTEM "????????"
 #define ERRNO_NONEXISTANT_FILE (67)
 #define DIO_MSG_BUFF_LEN (4095)
 
-/* s99_init unconditionally overwrites eid/ever/eopts — template values are backstop only. */
+/* s99_init unconditionally overwrites eid/ever/eopts; template values are backstop only. */
 static const struct s99_rbx s99rbxtemplate = {S99RBXID, S99RBXVR, {0}, 0, 0, 0};
 
 int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd, struct s99_common_text_unit* disp, const DBG_Opts* opts)
@@ -47,6 +48,21 @@ int dsdd_alloc(struct s99_common_text_unit* dsn, struct s99_common_text_unit* dd
   return IOSVC_ERR_NOERROR;
 }
 
+/*
+ * Function: ddfree
+ *
+ * Description:
+ *   Frees the allocation represented by the supplied DD text unit by issuing
+ *   the SVC 99 DYNFREE request.
+ *
+ * Parameters:
+ *   dd   - DD text unit describing the allocation to free.
+ *   opts - Diagnostic output options used for error reporting.
+ *
+ * Returns:
+ *   0 on success, 16 if SVC 99 control block initialization fails, or the
+ *   SVC 99 return code 12 when the DYNFREE request fails.
+ */
 int ddfree(struct s99_common_text_unit* dd, const DBG_Opts* opts)
 {
   struct s99rb* PTR32 parms;
