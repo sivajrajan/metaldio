@@ -130,22 +130,26 @@ struct s99_text_unit {
 #define DALSTATS_NEW   0x4
 #define DALSTATS_SHR   0x8
 
-/* Both structs contain the bit fields used by the SVC99 extended RB. */
+/* Both structs hold exactly 8 bits of bit-fields.  Under the active #pragma pack(1),
+ * XLC allocates storage for a bit-field container in units of
+ * min(sizeof(container_type), pack_boundary).  With pack boundary == 1, an
+ * unsigned int container is packed to 1 byte, so sizeof(s99_eopts) ==
+ * sizeof(s99_emgsv) == 1 — matching the SVC99 extended-RB layout exactly. */
 struct s99_eopts {
-	int s99eimsg:1;
-	int s99ermsg:1;
-	int s99elsto:1;
-	int s99emkey:1;
-	int s99emsub:1;
-	int s99ewtp:1;
-	int s99ersrv:2;
+	unsigned int s99eimsg:1;
+	unsigned int s99ermsg:1;
+	unsigned int s99elsto:1;
+	unsigned int s99emkey:1;
+	unsigned int s99emsub:1;
+	unsigned int s99ewtp:1;
+	unsigned int s99ersrv:2;
 };
 
 struct s99_emgsv {
-	int s99xrsrv1:4;
-	int s99xseve:1;
-	int s99xwarn:1;
-	int s99xrsrv2:2;
+	unsigned int s99xrsrv1:4;
+	unsigned int s99xseve:1;
+	unsigned int s99xwarn:1;
+	unsigned int s99xrsrv2:2;
 };
 
 #define S99RBXID "S99RBX"   /* 6-byte EBCDIC eye-catcher required by IEFDB476 */
