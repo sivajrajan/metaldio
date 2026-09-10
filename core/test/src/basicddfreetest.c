@@ -1,14 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "metaldio.h"
-#include "mem.h"
-#include "s99.h"
-#include "iosvcs.h"
-#include "dio.h"
-#include "ihadcb.h"
 #include "bpamio.h"
+#include "dio.h"
+#include "mem.h"
+#include "metaldio.h"
+#include "ihadcb.h"
+#include "iosvcs.h"
+#include "s99.h"
 /*
  * basicddfreetest.c  -  Regression tests for DYNFREE fixes in iosvcs.c /
  *                        s99.c / bpamio.c
